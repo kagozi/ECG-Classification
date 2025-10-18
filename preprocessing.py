@@ -1,12 +1,4 @@
-# import matplotlib.pyplot as plt
-# import seaborn as sns
-# from collections import Counter
-# import warnings
-# import os, ast, glob, random
-# import numpy as np
-# import pandas as pd
-# import matplotlib.pyplot as plt
-# import seaborn as sns
+# preprocessing.py
 import wfdb
 import os
 import numpy as np
@@ -14,31 +6,6 @@ from scipy.signal import butter, lfilter
 import tqdm
 from constants import TARGET_FS, SIGNAL_LEN_SECONDS, LOWCUT, HIGHCUT, OUTPUT_PATH, IMAGE_SIZE, TARGET_FS
 from scalogram_phasogram import ScalogramGenerator, generate_and_save_scalograms, LeadIIGenerator, generate_and_save_lead2_scalograms, generate_and_save_composite_phasograms, generate_and_save_lead2_phasograms
-
-# # Signal processing
-# from scipy.signal import butter, lfilter
-
-# # PyTorch
-# import torch
-# import torch.nn as nn
-# import torch.nn.functional as F
-# import torch.optim as optim
-# from torch.utils.data import Dataset, DataLoader
-# from torchvision import transforms, models
-# from sklearn.model_selection import train_test_split
-# from sklearn.preprocessing import MultiLabelBinarizer
-# from sklearn.metrics import f1_score, roc_auc_score, accuracy_score, confusion_matrix
-# from tqdm import tqdm
-# from tqdm import tqdm
-# import seaborn as sns
-
-
-
-# warnings.filterwarnings('ignore')
-
-# # Set up plotting parameters
-# plt.rcParams['figure.figsize'] = (12, 8)
-# sns.set_style("whitegrid")
 from create_superclass import create_superclass_labels
 from constants import DATA_PATH
 
@@ -80,64 +47,65 @@ def load_raw_signals(df, path):
     raw_signals = np.array(raw_signals)
     return raw_signals
 
-data, superclass_labels, mlb = create_superclass_labels(DATA_PATH, weight_threshold=0.5, min_count=10)
-category_counts = data['superclass_labels'].value_counts()
-print(category_counts)
 
-raw_signals = load_raw_signals(data, DATA_PATH)
-processed_signals = preprocess_signals(raw_signals)
 
 # ============================================================================
 # USAGE EXAMPLE
 # ============================================================================
+if __name__ == '__main__':
+    data, superclass_labels, mlb = create_superclass_labels(DATA_PATH, weight_threshold=0.5, min_count=10)
+    category_counts = data['superclass_labels'].value_counts()
+    print(category_counts)
 
+    raw_signals = load_raw_signals(data, DATA_PATH)
+    processed_signals = preprocess_signals(raw_signals)
 
-# 1. Generate RGB composite scalograms
-print("\n" + "="*80)
-print("GENERATING RGB COMPOSITE SCALOGRAMS")
-print("="*80 + "\n")
-SCALOGRAM_DIR = OUTPUT_PATH + '/composite_scalograms'
-generator = ScalogramGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
-scalogram_paths = generate_and_save_scalograms(
-    data, 
-    processed_signals, 
-    SCALOGRAM_DIR, 
-    generator
-)
+    # 1. Generate RGB composite scalograms
+    print("\n" + "="*80)
+    print("GENERATING RGB COMPOSITE SCALOGRAMS")
+    print("="*80 + "\n")
+    SCALOGRAM_DIR = OUTPUT_PATH + '/composite_scalograms'
+    generator = ScalogramGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
+    scalogram_paths = generate_and_save_scalograms(
+        data, 
+        processed_signals, 
+        SCALOGRAM_DIR, 
+        generator
+    )
 
-# 2. Generate RGB composite phasograms
-print("\n" + "="*80)
-print("GENERATING RGB COMPOSITE PHASOGRAMS")
-print("="*80 + "\n")
-COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + 'composite_phasograms'
-composite_phasogram_paths = generate_and_save_composite_phasograms(
-    data, 
-    processed_signals, 
-    COMPOSITE_PHASOGRAM_DIR, 
-    generator
-)
+    # 2. Generate RGB composite phasograms
+    print("\n" + "="*80)
+    print("GENERATING RGB COMPOSITE PHASOGRAMS")
+    print("="*80 + "\n")
+    COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + 'composite_phasograms'
+    composite_phasogram_paths = generate_and_save_composite_phasograms(
+        data, 
+        processed_signals, 
+        COMPOSITE_PHASOGRAM_DIR, 
+        generator
+    )
 
-# 3. Generate Lead II scalograms
-print("\n" + "="*80)
-print("GENERATING LEAD II SCALOGRAMS")
-print("="*80 + "\n")
-LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + 'lead2_scalograms'
-lead2_generator = LeadIIGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
-lead2_scalogram_paths = generate_and_save_lead2_scalograms(
-    data, 
-    processed_signals, 
-    LEAD2_SCALOGRAM_DIR, 
-    lead2_generator
-)
+    # 3. Generate Lead II scalograms
+    print("\n" + "="*80)
+    print("GENERATING LEAD II SCALOGRAMS")
+    print("="*80 + "\n")
+    LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + 'lead2_scalograms'
+    lead2_generator = LeadIIGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
+    lead2_scalogram_paths = generate_and_save_lead2_scalograms(
+        data, 
+        processed_signals, 
+        LEAD2_SCALOGRAM_DIR, 
+        lead2_generator
+    )
 
-# 4. Generate Lead II phasograms
-print("\n" + "="*80)
-print("GENERATING LEAD II PHASOGRAMS")
-print("="*80 + "\n")
-LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + 'lead2_phasograms'
-lead2_phasogram_paths = generate_and_save_lead2_phasograms(
-    data, 
-    processed_signals, 
-    LEAD2_PHASOGRAM_DIR, 
-    lead2_generator
-)
+    # 4. Generate Lead II phasograms
+    print("\n" + "="*80)
+    print("GENERATING LEAD II PHASOGRAMS")
+    print("="*80 + "\n")
+    LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + 'lead2_phasograms'
+    lead2_phasogram_paths = generate_and_save_lead2_phasograms(
+        data, 
+        processed_signals, 
+        LEAD2_PHASOGRAM_DIR, 
+        lead2_generator
+    )
