@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
+import numpy as np
 
 # ============================================================================
 # VISUALIZATION FUNCTIONS
@@ -74,6 +75,33 @@ def plot_confusion_matrices(y_true, y_pred, class_names, save_path=None):
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     
     plt.show()
+    
+def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=None, title="Confusion Matrix - All Classes"):
+    """
+    Plots a single confusion matrix showing all 5 classes together.
+    For multi-label classification, we convert to multi-class by taking the class with highest probability.
+    """
+    # Convert multi-label to multi-class by taking the class with highest probability
+    y_true_single = np.argmax(y_true, axis=1)
+    y_pred_single = np.argmax(y_pred, axis=1)
+    
+    cm = confusion_matrix(y_true_single, y_pred_single, labels=range(len(class_names)))
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=class_names, 
+                yticklabels=class_names,
+                cbar_kws={'shrink': 0.8})
+    plt.xlabel("Predicted", fontsize=12)
+    plt.ylabel("True", fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+    
 
 def plot_roc_curves(y_true, y_scores, class_names, save_path=None):
     """Plot ROC curves for each class"""

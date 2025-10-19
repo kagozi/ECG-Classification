@@ -13,7 +13,7 @@ from models.model_create import create_model
 from utils.loss_functions import FocalLoss
 from utils.training import train_model, predict_with_tta, evaluate_model
 from utils.metrics import compute_metrics
-from utils.plotting import plot_training_history, plot_confusion_matrices, plot_roc_curves, plot_precision_recall_curves
+from utils.plotting import plot_training_history, plot_confusion_matrices, plot_roc_curves, plot_precision_recall_curves, plot_confusion_matrix_all_classes
 
 # ============================================================================
 # COMPLETE PIPELINE FUNCTION
@@ -134,6 +134,8 @@ def run_complete_pipeline(train_df, y_train, val_df, y_val, test_df, y_test,
                        save_path=f'{model_name}_{mode}_roc.png')
         plot_precision_recall_curves(y_true, y_scores, class_names,
                                     save_path=f'{model_name}_{mode}_pr.png')
+        plot_confusion_matrix_all_classes(y_true, y_pred, class_names, 
+                               save_path=f'{model_name}_{mode}_confusion_all_classes.png')
     
     # 7. Return results
     results = {

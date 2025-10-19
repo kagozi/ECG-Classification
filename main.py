@@ -253,7 +253,7 @@ if __name__ == '__main__':
                 threshold=THRESHOLD,
                 device=DEVICE,
                 class_names=list(mlb.classes_),
-                use_tta=False,
+                use_tta=True,
                 swin_model_name=SWIN_VARIANT,
                 fusion_type=exp.get('fusion', 'early')
             )
