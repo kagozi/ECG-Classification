@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 
 DATA_PATH = '../datasets/ECG/'  # Update this path as needed
-OUTPUT_PATH = '../santosh_lab/shared/KagoziA/wavelets'
+OUTPUT_PATH = '../santosh_lab/shared/KagoziA/wavelets/'
 # --- Constants for Preprocessing ---
 TARGET_FS = 100  # Target sampling rate (Hz)
 SIGNAL_LEN_SECONDS = 10
