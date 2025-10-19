@@ -1,12 +1,11 @@
+from sklearn.metrics import (f1_score, roc_auc_score, accuracy_score, 
+                                  precision_score, recall_score, hamming_loss)
 # ============================================================================
 # METRICS COMPUTATION
 # ============================================================================
 
 def compute_metrics(y_true, y_pred, y_scores, threshold=0.5):
-    """Compute comprehensive metrics for multi-label classification"""
-    from sklearn.metrics import (f1_score, roc_auc_score, accuracy_score, 
-                                  precision_score, recall_score, hamming_loss)
-    
+    """Compute comprehensive metrics for multi-label classification"""    
     metrics = {}
     
     # F1 Scores
