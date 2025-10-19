@@ -4,10 +4,20 @@ import os
 import numpy as np
 from scipy.signal import butter, lfilter
 import tqdm
-from constants import TARGET_FS, SIGNAL_LEN_SECONDS, LOWCUT, HIGHCUT, OUTPUT_PATH, IMAGE_SIZE, TARGET_FS
-from scalogram_phasogram import ScalogramGenerator, generate_and_save_scalograms, LeadIIGenerator, generate_and_save_lead2_scalograms, generate_and_save_composite_phasograms, generate_and_save_lead2_phasograms
-from create_superclass import create_superclass_labels
-from constants import DATA_PATH
+from config.constants import (TARGET_FS, 
+                              SIGNAL_LEN_SECONDS, 
+                              LOWCUT, HIGHCUT, 
+                              OUTPUT_PATH, 
+                              IMAGE_SIZE, 
+                              TARGET_FS, 
+                              DATA_PATH)
+from preprocessing.scalogram_phasogram import (ScalogramGenerator, 
+                                               generate_and_save_scalograms, 
+                                               LeadIIGenerator, 
+                                               generate_and_save_lead2_scalograms, 
+                                               generate_and_save_composite_phasograms, 
+                                               generate_and_save_lead2_phasograms)
+from preprocessing.create_superclass import create_superclass_labels
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     nyq = 0.5 * fs
@@ -77,7 +87,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING RGB COMPOSITE PHASOGRAMS")
     print("="*80 + "\n")
-    COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + 'composite_phasograms'
+    COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + '/composite_phasograms'
     composite_phasogram_paths = generate_and_save_composite_phasograms(
         data, 
         processed_signals, 
@@ -89,7 +99,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING LEAD II SCALOGRAMS")
     print("="*80 + "\n")
-    LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + 'lead2_scalograms'
+    LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + '/lead2_scalograms'
     lead2_generator = LeadIIGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
     lead2_scalogram_paths = generate_and_save_lead2_scalograms(
         data, 
@@ -102,7 +112,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING LEAD II PHASOGRAMS")
     print("="*80 + "\n")
-    LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + 'lead2_phasograms'
+    LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + '/lead2_phasograms'
     lead2_phasogram_paths = generate_and_save_lead2_phasograms(
         data, 
         processed_signals, 
