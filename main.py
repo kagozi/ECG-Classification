@@ -7,10 +7,8 @@ from constants import DATA_PATH, composite_scalogram_path_for, lead2_scalogram_p
 
 if __name__ == '__main__':
     data, superclass_labels, mlb = create_superclass_labels(DATA_PATH, weight_threshold=0.5, min_count=10)
-    category_counts = data['superclass_labels'].value_counts()
-    print(category_counts)
-        
-        # Attach paths and existence flags for all 4 image types
+
+    # Attach paths and existence flags for all 4 image types
     data["composite_scalogram_path"] = [composite_scalogram_path_for(eid) for eid in data.index]
     data["lead2_scalogram_path"] = [lead2_scalogram_path_for(eid) for eid in data.index]
     data["lead2_phasogram_path"] = [lead2_phasogram_path_for(eid) for eid in data.index]
