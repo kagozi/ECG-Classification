@@ -2,10 +2,17 @@
 import os
 import numpy as np
 from create_superclass import create_superclass_labels
-from constants import DATA_PATH, composite_scalogram_path_for, lead2_scalogram_path_for, lead2_phasogram_path_for, composite_phasogram_path_for
+from constants import (DATA_PATH, 
+                       composite_scalogram_path_for, 
+                       lead2_scalogram_path_for, 
+                       lead2_phasogram_path_for, 
+                       composite_phasogram_path_for, 
+                       SEED, 
+                       setup_device_and_seed)
 
 
 if __name__ == '__main__':
+    setup_device_and_seed(SEED)
     data, superclass_labels, mlb = create_superclass_labels(DATA_PATH, weight_threshold=0.5, min_count=10)
 
     # Attach paths and existence flags for all 4 image types
@@ -66,6 +73,8 @@ if __name__ == '__main__':
     print(f"Train: {len(train_df)} samples, {y_train.shape}")
     print(f"Val:   {len(val_df)} samples, {y_val.shape}")  
     print(f"Test:  {len(test_df)} samples, {y_test.shape}")
+    
+    
     
     
     
