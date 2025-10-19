@@ -74,7 +74,71 @@ if __name__ == '__main__':
     print(f"Val:   {len(val_df)} samples, {y_val.shape}")  
     print(f"Test:  {len(test_df)} samples, {y_test.shape}")
     
-    
+    ## Models and Dataloaders
+
+
+    # ============================================================================
+    # USAGE EXAMPLES
+    # ============================================================================
+
+    """
+    # Example 1: Single modality with ResNet50
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='composite_scalogram',
+        batch_size=32
+    )
+    model = create_model('resnet50', num_classes=5, dropout=0.5)
+
+    # Example 2: Single modality with Swin Transformer
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='composite_phasogram',
+        batch_size=32
+    )
+    model = create_model(
+        'swin', 
+        num_classes=5, 
+        dropout=0.3,
+        swin_model_name='swin_base_patch4_window7_224'
+    )
+
+    # Example 3: Fusion model with early fusion
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='composite_both',  # 6 channels
+        batch_size=32
+    )
+    model = create_model(
+        'swin_fusion', 
+        num_classes=5, 
+        dropout=0.3,
+        swin_model_name='swin_base_patch4_window7_224',
+        fusion_type='early'
+    )
+
+    # Example 4: Fusion model with late fusion
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='lead2_both',  # 6 channels
+        batch_size=32
+    )
+    model = create_model(
+        'swin_fusion', 
+        num_classes=5, 
+        dropout=0.3,
+        swin_model_name='swin_small_patch4_window7_224',
+        fusion_type='late'
+    )
+
+    # Example 5: Lead II phasogram only with EfficientNet
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='lead2_phasogram',
+        batch_size=32
+    )
+    model = create_model('efficientnet_b3', num_classes=5, dropout=0.5)
+    """
     
     
     

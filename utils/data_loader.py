@@ -1,7 +1,8 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from PIL import Image
+from .data_transforms import get_transforms
 
 # ============================================================================
 # FLEXIBLE DATASET CLASS FOR PRECOMPUTED SCALOGRAMS AND PHASOGRAMS
@@ -138,71 +139,65 @@ class PrecomputedDataset(Dataset):
         return self.num_channels
 
 
-# ============================================================================
-# USAGE EXAMPLES
-# ============================================================================
-
-"""
-# Example 1: Composite scalogram only (for baseline model)
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='composite_scalogram',
-    transform=train_transforms
-)
-
-# Example 2: Composite phasogram only
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='composite_phasogram',
-    transform=train_transforms
-)
-
-# Example 3: Both composite scalogram and phasogram (fusion model)
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='composite_both',
-    transform=train_transforms
-)
-# Note: Model input channels should be 6 for this mode
-
-# Example 4: Lead II scalogram only
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='lead2_scalogram',
-    transform=train_transforms
-)
-
-# Example 5: Lead II phasogram only
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='lead2_phasogram',
-    transform=train_transforms
-)
-
-# Example 6: Both Lead II scalogram and phasogram (fusion model)
-train_dataset = PrecomputedDataset(
-    df=train_df,
-    labels=train_labels,
-    mode='lead2_both',
-    transform=train_transforms
-)
-# Note: Model input channels should be 6 for this mode
-
-# Get number of channels for model configuration
-num_channels = train_dataset.get_num_channels()
-print(f"Model should expect {num_channels} input channels")
-
-# Create DataLoader as usual
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=32,
-    shuffle=True,
-    num_workers=4,
-    pin_memory=True
-)
-"""
+def create_dataloaders(train_df, y_train, val_df, y_val, test_df, y_test,
+                    mode='composite_scalogram', batch_size=16, num_workers=4, 
+                    image_size=224, augment=True):
+    """
+    Create train, validation, and test dataloaders
+    
+    Args:
+        train_df, val_df, test_df: DataFrames with image paths
+        y_train, y_val, y_test: Label arrays
+        mode: Dataset mode - one of:
+            - 'composite_scalogram': RGB composite scalogram only
+            - 'composite_phasogram': RGB composite phasogram only
+            - 'composite_both': Both composite (6 channels)
+            - 'lead2_scalogram': Lead II scalogram only
+            - 'lead2_phasogram': Lead II phasogram only
+            - 'lead2_both': Both Lead II (6 channels)
+        batch_size: Batch size
+        num_workers: Number of workers for data loading
+        image_size: Image size for transforms
+        augment: Whether to apply augmentation to training data
+    
+    Returns:
+        train_loader, val_loader, test_loader
+    """
+    train_transform, val_transform = get_transforms(image_size=image_size, augment=augment)
+    
+    # Create datasets with specified mode
+    train_dataset = PrecomputedDataset(
+        train_df, y_train, mode=mode, transform=train_transform
+    )
+    val_dataset = PrecomputedDataset(
+        val_df, y_val, mode=mode, transform=val_transform
+    )
+    test_dataset = PrecomputedDataset(
+        test_df, y_test, mode=mode, transform=val_transform
+    )
+    
+    # Get number of channels for model configuration
+    num_channels = train_dataset.get_num_channels()
+    
+    # Create dataloaders
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True,
+        num_workers=num_workers, pin_memory=True, drop_last=True
+    )
+    
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=True
+    )
+    
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=True
+    )
+    
+    print(f"Dataloaders created with mode='{mode}' ({num_channels} channels):")
+    print(f"  Train: {len(train_dataset)} samples, {len(train_loader)} batches")
+    print(f"  Val:   {len(val_dataset)} samples, {len(val_loader)} batches")
+    print(f"  Test:  {len(test_dataset)} samples, {len(test_loader)} batches")
+    
+    return train_loader, val_loader, test_loader
