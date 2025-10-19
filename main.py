@@ -2,7 +2,7 @@
 import os
 import numpy as np
 from preprocessing.create_superclass import create_superclass_labels
-from constants import (DATA_PATH, 
+from config.constants import (DATA_PATH, 
                        composite_scalogram_path_for, 
                        lead2_scalogram_path_for, 
                        lead2_phasogram_path_for, 
