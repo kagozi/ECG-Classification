@@ -7,8 +7,8 @@ import random
 import numpy as np
 from pathlib import Path
 
-DATA_PATH = './datasets/'  # Update this path as needed
-OUTPUT_PATH = './output/'  # Update this path as needed (where the processed scalograms/phasograms will be saved)
+DATA_PATH = '../datasets/ECG/'  # Update this path as needed
+OUTPUT_PATH = '../santosh_lab/shared/KagoziA/wavelets'
 # --- Constants for Preprocessing ---
 TARGET_FS = 100  # Target sampling rate (Hz)
 SIGNAL_LEN_SECONDS = 10
