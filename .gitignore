@@ -2,3 +2,8 @@
 .ecg/*
 datasets/
 datasets/*
+__pycache__/
+*.py[cod]
+*$py.class
+*.sh
+slurm-*.out
