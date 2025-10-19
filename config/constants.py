@@ -18,6 +18,17 @@ THRESHOLD = 0.5  # for binarizing probabilities
 IMAGE_SIZE = 224  # for ResNet50 input resize
 NUM_WORKERS = 4
 SEED = 42  # for reproducibility
+
+# Hyperparameters
+BATCH_SIZE = 16
+EPOCHS = 50
+PATIENCE = 5
+LR = 5e-5
+THRESHOLD = 0.5
+
+TRAIN_MULTIPLE = True
+
+
 def setup_device_and_seed(seed: int = 42):
     """
     Sets up the computation device (CUDA or CPU) and seeds all
