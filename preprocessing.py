@@ -77,7 +77,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING RGB COMPOSITE PHASOGRAMS")
     print("="*80 + "\n")
-    COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + 'composite_phasograms'
+    COMPOSITE_PHASOGRAM_DIR = OUTPUT_PATH + '/composite_phasograms'
     composite_phasogram_paths = generate_and_save_composite_phasograms(
         data, 
         processed_signals, 
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING LEAD II SCALOGRAMS")
     print("="*80 + "\n")
-    LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + 'lead2_scalograms'
+    LEAD2_SCALOGRAM_DIR = OUTPUT_PATH + '/lead2_scalograms'
     lead2_generator = LeadIIGenerator(fs=TARGET_FS, image_size=IMAGE_SIZE)
     lead2_scalogram_paths = generate_and_save_lead2_scalograms(
         data, 
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     print("\n" + "="*80)
     print("GENERATING LEAD II PHASOGRAMS")
     print("="*80 + "\n")
-    LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + 'lead2_phasograms'
+    LEAD2_PHASOGRAM_DIR = OUTPUT_PATH + '/lead2_phasograms'
     lead2_phasogram_paths = generate_and_save_lead2_phasograms(
         data, 
         processed_signals, 

@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import random
 import numpy as np
+from pathlib import Path
 
 DATA_PATH = './datasets/'  # Update this path as needed
 OUTPUT_PATH = './output/'  # Update this path as needed (where the processed scalograms/phasograms will be saved)
@@ -45,4 +46,24 @@ def setup_device_and_seed(seed: int = 42):
     print(f"🔒 Random seed set to: {seed}")
 
     return device
+
+SCALO_ROOT_COMPOSITE_SCALO = Path(f"{OUTPUT_PATH}scalograms")  # composite scalograms
+SCALO_ROOT_COMPOSITE_PHASO = Path(f"{OUTPUT_PATH}composite_phasograms")
+SCALO_ROOT_LEAD2_SCALO = Path(f"{OUTPUT_PATH}lead2_scalograms")
+SCALO_ROOT_LEAD2_PHASO = Path(f"{OUTPUT_PATH}lead2_phasograms")
+
+# Path generator functions for each image type
+def composite_scalogram_path_for(ecg_id: int) -> str:
+    return str(SCALO_ROOT_COMPOSITE_SCALO / f"{int(ecg_id)}_scalogram.npy")
+
+def lead2_scalogram_path_for(ecg_id: int) -> str:
+    return str(SCALO_ROOT_LEAD2_SCALO / f"{int(ecg_id)}_lead2_scalogram.npy")
+
+
+def lead2_phasogram_path_for(ecg_id: int) -> str:
+    return str(SCALO_ROOT_LEAD2_PHASO / f"{int(ecg_id)}_lead2_phasogram.npy")
+
+def composite_phasogram_path_for(ecg_id: int) -> str:
+    return str(SCALO_ROOT_COMPOSITE_PHASO / f"{int(ecg_id)}_phasogram.npy")
+
 
