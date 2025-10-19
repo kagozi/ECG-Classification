@@ -19,6 +19,7 @@ from config.constants import (DATA_PATH,
                        )
 from runner import run_complete_pipeline
 from utils.metrics import compute_metrics
+from utils.plotting import plot_precision_recall_curves, plot_roc_curves, plot_confusion_matrix_all_classes, plot_confusion_matrices
 
 
 if __name__ == '__main__':
@@ -99,6 +100,17 @@ if __name__ == '__main__':
     print(f"Val:   {len(val_df)} samples, {y_val.shape}")  
     print(f"Test:  {len(test_df)} samples, {y_test.shape}")
     
+    """
+    ECG Classification with Scalograms and Phasograms - Complete Training Script
+    ============================================================================
+
+    This script trains state-of-the-art models on ECG scalograms and/or phasograms 
+    for multi-label classification with support for fusion models.
+    """
+    # ============================================================================
+    # MAIN TRAINING SCRIPT
+    # ============================================================================
+    
     # ============================================================================
     # STEP 1: QUICK VERIFICATION
     # ============================================================================
@@ -120,91 +132,23 @@ if __name__ == '__main__':
         print(f"  {class_name:25} {int(count):5} samples ({pct:5.1f}%)")
 
     # ============================================================================
-    # STEP 2: SINGLE MODEL TRAINING
+    # STEP 2: MULTI-MODEL COMPARISON (PRIMARY WORKFLOW)
     # ============================================================================
 
     print("\n" + "="*80)
-    print("STEP 2: TRAINING SINGLE MODEL")
+    print("STEP 2: MULTI-MODEL COMPARISON")
     print("="*80)
 
     # ============================================================================
     # CONFIGURATION - MODIFY THESE FOR YOUR EXPERIMENT
     # ============================================================================
 
-    # Model options: 'resnet50', 'efficientnet_b3', 'densenet121', 'vit', 'swin', 'swin_fusion'
-    MODEL_NAME = 'swin'
-
-    # Data mode options:
-    # - 'composite_scalogram': RGB composite scalogram only
-    # - 'composite_phasogram': RGB composite phasogram only
-    # - 'composite_both': Both composite (for fusion models)
-    # - 'lead2_scalogram': Lead II scalogram only
-    # - 'lead2_phasogram': Lead II phasogram only
-    # - 'lead2_both': Both Lead II (for fusion models)
-    DATA_MODE = 'composite_scalogram'
-
-    # Swin Transformer variant (only used if MODEL_NAME is 'swin' or 'swin_fusion')
+    # Swin Transformer variant (used for all Swin models)
     # Options: 'swin_tiny_patch4_window7_224', 'swin_small_patch4_window7_224',
     #          'swin_base_patch4_window7_224', 'swin_large_patch4_window7_224'
     SWIN_VARIANT = 'swin_large_patch4_window7_224'
 
-    # Fusion type (only used if MODEL_NAME is 'swin_fusion')
-    # Options: 'early' or 'late'
-    FUSION_TYPE = 'early'
-
     # ============================================================================
-
-    # results = run_complete_pipeline(
-    #     train_df=train_df,
-    #     y_train=y_train,
-    #     val_df=val_df,
-    #     y_val=y_val,
-    #     test_df=test_df,
-    #     y_test=y_test,
-    #     model_name=MODEL_NAME,
-    #     mode=DATA_MODE,
-    #     batch_size=BATCH_SIZE,
-    #     num_epochs=EPOCHS,
-    #     lr=LR,
-    #     patience=PATIENCE,
-    #     threshold=THRESHOLD,
-    #     device=DEVICE,
-    #     class_names=list(mlb.classes_),
-    #     use_tta=False,  # Set to True for better test performance (slower)
-    #     swin_model_name=SWIN_VARIANT,
-    #     fusion_type=FUSION_TYPE
-    # )
-
-    # ============================================================================
-    # STEP 3: PRINT FINAL RESULTS
-    # ============================================================================
-
-    # print("\n" + "="*80)
-    # print("FINAL RESULTS")
-    # print("="*80)
-
-    # test_metrics = results['test_metrics']
-    # print(f"\nOverall Performance:")
-    # print(f"  F1 Score (Macro):     {test_metrics['f1_macro']:.4f}")
-    # print(f"  F1 Score (Weighted):  {test_metrics['f1_weighted']:.4f}")
-    # print(f"  AUC Score (Macro):    {test_metrics['auc_macro']:.4f}")
-    # print(f"  Exact Match Accuracy: {test_metrics['exact_match_accuracy']:.4f}")
-    # print(f"  Precision (Macro):    {test_metrics['precision_macro']:.4f}")
-    # print(f"  Recall (Macro):       {test_metrics['recall_macro']:.4f}")
-    # print(f"  Hamming Accuracy:     {test_metrics['hamming_accuracy']:.4f}")
-    # print(f"  Label Accuracy:       {test_metrics['label_accuracy']:.4f}")
-
-    # print(f"\nModel saved to: {results['model_path']}")
-
-    # ============================================================================
-    # OPTIONAL: TRAIN MULTIPLE MODELS & COMPARE
-    # ============================================================================
-
-    print("\n" + "="*80)
-    print("OPTIONAL: MULTI-MODEL COMPARISON")
-    print("="*80)
-
-  # Set to True to train multiple configurations
 
     if TRAIN_MULTIPLE:
         # Define experiments to run
@@ -253,12 +197,40 @@ if __name__ == '__main__':
                 threshold=THRESHOLD,
                 device=DEVICE,
                 class_names=list(mlb.classes_),
-                use_tta=True,
+                use_tta=False,  # Set to True for TTA (slower but better)
                 swin_model_name=SWIN_VARIANT,
                 fusion_type=exp.get('fusion', 'early')
             )
             
             all_results[exp['name']] = results
+            
+            # Save individual model predictions
+            print(f"\nSaving predictions for {exp['name']}...")
+            predictions_df = pd.DataFrame({
+                'ecg_id': test_df.index
+            })
+            
+            # Add true labels
+            for i, class_name in enumerate(mlb.classes_):
+                predictions_df[f'true_{class_name}'] = results['predictions']['y_true'][:, i]
+            
+            # Add predicted labels
+            for i, class_name in enumerate(mlb.classes_):
+                predictions_df[f'pred_{class_name}'] = results['predictions']['y_pred'][:, i]
+            
+            # Add prediction scores
+            for i, class_name in enumerate(mlb.classes_):
+                predictions_df[f'score_{class_name}'] = results['predictions']['y_scores'][:, i]
+            
+            output_path = f'predictions_{exp["name"]}.csv'
+            predictions_df.to_csv(output_path, index=False)
+            print(f"✓ Predictions saved to: {output_path}")
+            
+            print(f"✓ Training history saved to: {exp['model']}_{exp['mode']}_history.png")
+            print(f"✓ Confusion matrices saved to: {exp['model']}_{exp['mode']}_confusion.png")
+            print(f"✓ ROC curves saved to: {exp['model']}_{exp['mode']}_roc.png")
+            print(f"✓ PR curves saved to: {exp['model']}_{exp['mode']}_pr.png")
+            print(f"✓ Model checkpoint saved to: {results['model_path']}")
         
         # Compare models
         print("\n" + "="*80)
@@ -276,7 +248,7 @@ if __name__ == '__main__':
         
         # Find best model
         best_model = max(all_results.items(), key=lambda x: x[1]['test_metrics']['f1_macro'])
-        print(f"\nBest Model: {best_model[0]} (F1: {best_model[1]['test_metrics']['f1_macro']:.4f})")
+        print(f"\n🏆 Best Single Model: {best_model[0]} (F1: {best_model[1]['test_metrics']['f1_macro']:.4f})")
         
         # Ensemble of ALL models
         print("\n" + "="*80)
@@ -287,7 +259,7 @@ if __name__ == '__main__':
         ensemble_all_scores = np.mean(all_scores, axis=0)
         ensemble_all_preds = (ensemble_all_scores > THRESHOLD).astype(float)
         
-        y_true = results['predictions']['y_true']
+        y_true = list(all_results.values())[0]['predictions']['y_true']
         ensemble_all_metrics = compute_metrics(y_true, ensemble_all_preds, ensemble_all_scores, THRESHOLD)
         
         print(f"\nEnsemble All Models Performance:")
@@ -410,65 +382,142 @@ if __name__ == '__main__':
         
         ensemble_output_path = 'predictions_ensemble.csv'
         ensemble_pred_df.to_csv(ensemble_output_path, index=False)
+        print(f"✓ Ensemble predictions saved to: {ensemble_output_path}")
+        
+        # Generate ensemble visualizations
+        print("\n" + "="*80)
+        print("GENERATING ENSEMBLE VISUALIZATIONS")
+        print("="*80)
+        
+        # Use the best ensemble for visualizations
+        if best_ensemble[0] == 'Ensemble (All)':
+            best_ensemble_preds = ensemble_all_preds
+            best_ensemble_scores = ensemble_all_scores
+        elif best_ensemble[0] == f'Ensemble (Top-{top_k})':
+            best_ensemble_preds = ensemble_top_preds
+            best_ensemble_scores = ensemble_top_scores
+        else:
+            best_ensemble_preds = ensemble_weighted_preds
+            best_ensemble_scores = ensemble_weighted_scores
+        
+        # Plot ensemble confusion matrices
+        plot_confusion_matrices(y_true, best_ensemble_preds, list(mlb.classes_),
+                            save_path='ensemble_confusion.png')
+        plot_confusion_matrix_all_classes(y_true, best_ensemble_preds, list(mlb.classes_),
+                            save_path='ensemble_confusion_all_classes.png')
+        print("✓ Ensemble confusion matrices saved to: ensemble_confusion.png")
+        
+        # Plot ensemble ROC curves
+        plot_roc_curves(y_true, best_ensemble_scores, list(mlb.classes_),
+                    save_path='ensemble_roc.png')
+        print("✓ Ensemble ROC curves saved to: ensemble_roc.png")
+        
+        # Plot ensemble PR curves
+        plot_precision_recall_curves(y_true, best_ensemble_scores, list(mlb.classes_),
+                                    save_path='ensemble_pr.png')
+        print("✓ Ensemble PR curves saved to: ensemble_pr.png")
+
+    else:
+        print("\nTRAIN_MULTIPLE is set to False. Skipping multi-model training.")
+        print("Set TRAIN_MULTIPLE = True to run comprehensive experiments.")
+
+    # ============================================================================
+    # STEP 3: SUMMARY
+    # ============================================================================
+
+    if TRAIN_MULTIPLE:
+        print("\n" + "="*80)
+        print("TRAINING COMPLETED SUCCESSFULLY!")
+        print("="*80)
+        
+        print("\n" + "="*80)
+        print("ALL GENERATED FILES")
+        print("="*80)
+        
+        print("\nIndividual Model Files:")
+        for i, exp in enumerate(experiments, 1):
+            print(f"\n{i}. {exp['name']}:")
+            print(f"   - Predictions:    predictions_{exp['name']}.csv")
+            print(f"   - Model:          best_{exp['model']}_{exp['mode']}.pth")
+            print(f"   - History:        {exp['model']}_{exp['mode']}_history.png")
+            print(f"   - Confusion:      {exp['model']}_{exp['mode']}_confusion.png")
+            print(f"   - ROC:            {exp['model']}_{exp['mode']}_roc.png")
+            print(f"   - PR Curve:       {exp['model']}_{exp['mode']}_pr.png")
+        
+        print("\nEnsemble Files:")
+        print(f"   - Predictions:    {ensemble_output_path}")
+        print(f"   - Confusion:      ensemble_confusion.png")
+        print(f"   - ROC:            ensemble_roc.png")
+        print(f"   - PR Curve:       ensemble_pr.png")
+        print(f"  Label Accuracy:       {ensemble_weighted_metrics['label_accuracy']:.4f}")
+        
+        # Final comparison
+        print("\n" + "="*80)
+        print("ENSEMBLE COMPARISON SUMMARY")
+        print("="*80)
+        
+        ensemble_comparison = {
+            'Best Single Model': best_model[1]['test_metrics']['f1_macro'],
+            'Ensemble (All)': ensemble_all_metrics['f1_macro'],
+            f'Ensemble (Top-{top_k})': ensemble_top_metrics['f1_macro'],
+            'Ensemble (Weighted)': ensemble_weighted_metrics['f1_macro']
+        }
+        
+        print(f"\n{'Method':<25} | {'F1 Score (Macro)':<12}")
+        print("-" * 40)
+        for method, score in ensemble_comparison.items():
+            print(f"{method:<25} | {score:<12.4f}")
+        
+        best_ensemble = max(ensemble_comparison.items(), key=lambda x: x[1])
+        print(f"\n🏆 Best Overall: {best_ensemble[0]} (F1: {best_ensemble[1]:.4f})")
+        
+        # Save ensemble predictions
+        print("\n" + "="*80)
+        print("SAVING ENSEMBLE PREDICTIONS")
+        print("="*80)
+        
+        ensemble_pred_df = pd.DataFrame({
+            'ecg_id': test_df.index
+        })
+        
+        # Add true labels
+        for i, class_name in enumerate(mlb.classes_):
+            ensemble_pred_df[f'true_{class_name}'] = y_true[:, i]
+        
+        # Add all ensemble predictions
+        for i, class_name in enumerate(mlb.classes_):
+            ensemble_pred_df[f'pred_all_{class_name}'] = ensemble_all_preds[:, i]
+            ensemble_pred_df[f'pred_top{top_k}_{class_name}'] = ensemble_top_preds[:, i]
+            ensemble_pred_df[f'pred_weighted_{class_name}'] = ensemble_weighted_preds[:, i]
+        
+        # Add all ensemble scores
+        for i, class_name in enumerate(mlb.classes_):
+            ensemble_pred_df[f'score_all_{class_name}'] = ensemble_all_scores[:, i]
+            ensemble_pred_df[f'score_top{top_k}_{class_name}'] = ensemble_top_scores[:, i]
+            ensemble_pred_df[f'score_weighted_{class_name}'] = ensemble_weighted_scores[:, i]
+        
+        ensemble_output_path = 'predictions_ensemble.csv'
+        ensemble_pred_df.to_csv(ensemble_output_path, index=False)
         print(f"Ensemble predictions saved to: {ensemble_output_path}")
 
-    # ============================================================================
-    # STEP 4: SAVE PREDICTIONS
-    # ============================================================================
-
-    print("\n" + "="*80)
-    print("SAVING PREDICTIONS")
-    print("="*80)
-
-    # Save predictions to CSV
-    predictions_df = pd.DataFrame({
-        'ecg_id': test_df.index
-    })
-
-    # Add true labels
-    for i, class_name in enumerate(mlb.classes_):
-        predictions_df[f'true_{class_name}'] = results['predictions']['y_true'][:, i]
-
-    # Add predicted labels
-    for i, class_name in enumerate(mlb.classes_):
-        predictions_df[f'pred_{class_name}'] = results['predictions']['y_pred'][:, i]
-
-    # Add prediction scores
-    for i, class_name in enumerate(mlb.classes_):
-        predictions_df[f'score_{class_name}'] = results['predictions']['y_scores'][:, i]
-
-    output_path = f'predictions_{MODEL_NAME}_{DATA_MODE}.csv'
-    predictions_df.to_csv(output_path, index=False)
-    print(f"Predictions saved to: {output_path}")
-
-    # ============================================================================
-    # SUMMARY
-    # ============================================================================
-
-    print("\n" + "="*80)
-    print("TRAINING COMPLETED SUCCESSFULLY!")
-    print("="*80)
-    print(f"\nConfiguration:")
-    print(f"  Model:      {MODEL_NAME}")
-    print(f"  Data Mode:  {DATA_MODE}")
-    if MODEL_NAME in ['swin', 'swin_fusion']:
-        print(f"  Swin Variant: {SWIN_VARIANT}")
-    if MODEL_NAME == 'swin_fusion':
-        print(f"  Fusion Type: {FUSION_TYPE}")
-
-    print(f"\nKey Files Generated:")
-    print(f"  1. Model checkpoint:     {results['model_path']}")
-    print(f"  2. Training history:     {MODEL_NAME}_{DATA_MODE}_history.png")
-    print(f"  3. Confusion matrices:   {MODEL_NAME}_{DATA_MODE}_confusion.png")
-    print(f"  4. ROC curves:           {MODEL_NAME}_{DATA_MODE}_roc.png")
-    print(f"  5. PR curves:            {MODEL_NAME}_{DATA_MODE}_pr.png")
-    print(f"  6. Predictions CSV:      {output_path}")
-
-    print(f"\n{'='*80}")
-    print("Next Steps & Recommendations:")
-    print("="*80)
-    
-    
+        
+        print(f"\n{'='*80}")
+        print("PERFORMANCE SUMMARY")
+        print("="*80)
+        
+        print(f"\n🏆 Best Single Model: {best_model[0]}")
+        print(f"   F1 Score: {best_model[1]['test_metrics']['f1_macro']:.4f}")
+        
+        print(f"\n🏆 Best Ensemble: {best_ensemble[0]}")
+        print(f"   F1 Score: {best_ensemble[1]:.4f}")
+        
+        improvement = ((best_ensemble[1] - best_model[1]['test_metrics']['f1_macro']) / 
+                    best_model[1]['test_metrics']['f1_macro'] * 100)
+        print(f"\n📈 Ensemble Improvement: +{improvement:.2f}%")
+        
+        print(f"\n{'='*80}")
+        print("Next Steps & Recommendations:")
+        print("="*80)
     print("""
     1. SINGLE MODALITY EXPERIMENTS:
     - Try: mode='composite_scalogram' vs 'composite_phasogram'
@@ -537,15 +586,21 @@ if __name__ == '__main__':
     ✓ Check if fusion actually improves scores
     ✓ Some classes may benefit more from fusion
     ✓ Ensemble fusion + single modality models
+    ✓ Try weighted ensemble based on validation performance
+
+    6. Ensemble Strategies:
+    - Simple Average: Equal weight to all models
+    - Top-K Average: Only best performing models
+    - Weighted Average: Weight by validation F1 score
+    - Diversity matters: Mix CNNs + Transformers, scalograms + phasograms
 
     Expected Performance Hierarchy:
-    Single Modality (3ch) < Early Fusion (6ch) < Late Fusion (6ch) < Ensemble
+    Single Modality (3ch) < Early Fusion (6ch) < Late Fusion (6ch) < Ensemble of Best
+    
+    Typical Improvements:
+    - Fusion over single: +1-3% F1
+    - Ensemble over best single: +2-5% F1
+    - Weighted ensemble: +0.5-1% over simple average
     """)
 
-    print("="*80)
-    
-    
-    
-    
-    
-    
+print("="*80)
