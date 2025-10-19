@@ -9,6 +9,7 @@ from constants import (DATA_PATH,
                        composite_phasogram_path_for, 
                        SEED, 
                        setup_device_and_seed)
+from utils.data_loader import create_dataloaders
 
 
 if __name__ == '__main__':
@@ -81,6 +82,12 @@ if __name__ == '__main__':
     # USAGE EXAMPLES
     # ============================================================================
 
+       # Example 1: Single modality with ResNet50
+    train_loader, val_loader, test_loader = create_dataloaders(
+        train_df, y_train, val_df, y_val, test_df, y_test,
+        mode='composite_scalogram',
+        batch_size=32
+    )
     """
     # Example 1: Single modality with ResNet50
     train_loader, val_loader, test_loader = create_dataloaders(
