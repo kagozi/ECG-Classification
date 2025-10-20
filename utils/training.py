@@ -4,6 +4,7 @@ from tqdm import tqdm
 from .metrics import compute_metrics
 import pandas as pd
 import torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
 
 
 # ============================================================================
@@ -43,8 +44,10 @@ class EarlyStopping:
         
         return self.early_stop
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, threshold=0.5):
-    """Train for one epoch"""
+
+
+def train_one_epoch(model, dataloader, criterion, optimizer, device, threshold=0.5, scaler=None):
+    """Train for one epoch with optional mixed precision"""
     model.train()
     
     running_loss = 0.0
@@ -52,19 +55,32 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, threshold=0
     all_preds = []
     all_scores = []
     
+    # Use scaler if provided, otherwise None for normal training
+    use_amp = scaler is not None
+    
     pbar = tqdm(dataloader, desc='Training')
     for images, labels in pbar:
         images = images.to(device)
         labels = labels.to(device)
         
-        # Forward pass
         optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
         
-        # Backward pass
-        loss.backward()
-        optimizer.step()
+        # Forward pass with mixed precision
+        if use_amp:
+            with autocast():
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+            
+            # Backward pass with gradient scaling
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            # Normal forward/backward pass
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
         
         # Track metrics
         running_loss += loss.item() * images.size(0)
@@ -160,7 +176,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     best_f1 = 0.0
     best_model_state = None
     early_stopping = EarlyStopping(patience=patience, mode='max')
-    
+    scaler = GradScaler()
     print("="*80)
     print("STARTING TRAINING")
     print("="*80)
@@ -168,9 +184,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         print("-" * 40)
-        
+
         # Train
-        train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device, threshold)
+        train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device, threshold, scaler=scaler)
         
         # Validate
         val_metrics, _, _, _ = validate(model, val_loader, criterion, device, threshold)

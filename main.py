@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
+import gc
 from preprocessing.create_superclass import create_superclass_labels
 from config.constants import (DATA_PATH, 
                        composite_scalogram_path_for, 
@@ -155,10 +156,10 @@ if __name__ == '__main__':
         # Define experiments to run
         experiments = [
             # Compare single modalities with Swin
-            {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
-            {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
-            {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
-            {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
+            # {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
+            # {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
+            # {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
+            # {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
             
             # Compare fusion strategies
             {'model': 'swin_fusion', 'mode': 'composite_both', 'fusion': 'early', 'name': 'Swin-Fusion-Early'},
@@ -167,12 +168,15 @@ if __name__ == '__main__':
             # Compare with CNNs (scalogram and phasogram)
             {'model': 'resnet50', 'mode': 'composite_scalogram', 'name': 'ResNet50-Scalo'},
             {'model': 'resnet50', 'mode': 'composite_phasogram', 'name': 'ResNet50-Phaso'},
+            
             {'model': 'efficientnet_b3', 'mode': 'composite_scalogram', 'name': 'EfficientNet-B3-Scalo'},
             {'model': 'efficientnet_b3', 'mode': 'composite_phasogram', 'name': 'EfficientNet-B3-Phaso'},
             
             # Compare with Vision Transformer
             {'model': 'vit', 'mode': 'composite_scalogram', 'name': 'ViT-Scalo'},
             {'model': 'vit', 'mode': 'composite_phasogram', 'name': 'ViT-Phaso'},
+            {'model': 'vit', 'mode': 'lead2_scalogram', 'name': 'ViT-Lead2Scalo'},
+            {'model': 'vit', 'mode': 'lead2_phasogram', 'name': 'ViT-Lead2Phaso'},
         ]
         
         all_results = {}
@@ -198,13 +202,13 @@ if __name__ == '__main__':
                 threshold=THRESHOLD,
                 device=DEVICE,
                 class_names=list(mlb.classes_),
-                use_tta=False,  # Set to True for TTA (slower but better)
+                use_tta=True,  # Set to True for TTA (slower but better)
                 swin_model_name=SWIN_VARIANT,
                 fusion_type=exp.get('fusion', 'early')
             )
             
             all_results[exp['name']] = results
-            
+            gc.collect()
             # Save individual model predictions
             print(f"\nSaving predictions for {exp['name']}...")
             predictions_df = pd.DataFrame({
