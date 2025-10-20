@@ -104,7 +104,7 @@ def run_complete_pipeline(train_df, y_train, val_df, y_val, test_df, y_test,
     )
     
     # 4. Train
-    save_path = f'best_{model_name}_{mode}.pth'
+    save_path = os.path.join(RESULTS_PATH, f'best_{model_name}_{mode}.pth')
     history, best_state = train_model(
         model, train_loader, val_loader, criterion, optimizer, scheduler,
         device, num_epochs=num_epochs, patience=patience, threshold=threshold,
