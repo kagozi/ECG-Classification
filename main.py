@@ -15,15 +15,16 @@ from config.constants import (DATA_PATH,
                        PATIENCE,
                        LR,
                        THRESHOLD,
-                       TRAIN_MULTIPLE
+                       TRAIN_MULTIPLE,
+                       RESULTS_PATH
                        )
 from runner import run_complete_pipeline
 from utils.metrics import compute_metrics
 from utils.plotting import plot_precision_recall_curves, plot_roc_curves, plot_confusion_matrix_all_classes, plot_confusion_matrices
 
-
 if __name__ == '__main__':
     DEVICE = setup_device_and_seed(SEED)
+    os.makedirs(RESULTS_PATH, exist_ok=True)
     data, superclass_labels, mlb = create_superclass_labels(DATA_PATH, weight_threshold=0.5, min_count=10)
 
     # Attach paths and existence flags for all 4 image types
@@ -222,7 +223,8 @@ if __name__ == '__main__':
             for i, class_name in enumerate(mlb.classes_):
                 predictions_df[f'score_{class_name}'] = results['predictions']['y_scores'][:, i]
             
-            output_path = f'predictions_{exp["name"]}.csv'
+            output_path = os.path.join(RESULTS_PATH, f'predictions_{exp["name"]}.csv')
+            
             predictions_df.to_csv(output_path, index=False)
             print(f"✓ Predictions saved to: {output_path}")
             
@@ -380,7 +382,7 @@ if __name__ == '__main__':
             ensemble_pred_df[f'score_top{top_k}_{class_name}'] = ensemble_top_scores[:, i]
             ensemble_pred_df[f'score_weighted_{class_name}'] = ensemble_weighted_scores[:, i]
         
-        ensemble_output_path = 'predictions_ensemble.csv'
+        ensemble_output_path = os.path.join(RESULTS_PATH, 'predictions_ensemble.csv')
         ensemble_pred_df.to_csv(ensemble_output_path, index=False)
         print(f"✓ Ensemble predictions saved to: {ensemble_output_path}")
         
@@ -402,19 +404,19 @@ if __name__ == '__main__':
         
         # Plot ensemble confusion matrices
         plot_confusion_matrices(y_true, best_ensemble_preds, list(mlb.classes_),
-                            save_path='ensemble_confusion.png')
+                    save_path=os.path.join(RESULTS_PATH, 'ensemble_confusion.png'))
         plot_confusion_matrix_all_classes(y_true, best_ensemble_preds, list(mlb.classes_),
-                            save_path='ensemble_confusion_all_classes.png')
+                                          save_path=os.path.join(RESULTS_PATH, 'ensemble_confusion_all_classes.png'))
         print("✓ Ensemble confusion matrices saved to: ensemble_confusion.png")
         
         # Plot ensemble ROC curves
         plot_roc_curves(y_true, best_ensemble_scores, list(mlb.classes_),
-                    save_path='ensemble_roc.png')
+            save_path=os.path.join(RESULTS_PATH, 'ensemble_roc.png'))
         print("✓ Ensemble ROC curves saved to: ensemble_roc.png")
         
         # Plot ensemble PR curves
         plot_precision_recall_curves(y_true, best_ensemble_scores, list(mlb.classes_),
-                                    save_path='ensemble_pr.png')
+                            save_path=os.path.join(RESULTS_PATH, 'ensemble_pr.png'))
         print("✓ Ensemble PR curves saved to: ensemble_pr.png")
 
     else:

@@ -14,6 +14,8 @@ from utils.loss_functions import FocalLoss
 from utils.training import train_model, predict_with_tta, evaluate_model
 from utils.metrics import compute_metrics
 from utils.plotting import plot_training_history, plot_confusion_matrices, plot_roc_curves, plot_precision_recall_curves, plot_confusion_matrix_all_classes
+from config.constants import RESULTS_PATH
+import os
 
 # ============================================================================
 # COMPLETE PIPELINE FUNCTION
@@ -49,7 +51,7 @@ def run_complete_pipeline(train_df, y_train, val_df, y_val, test_df, y_test,
     Returns:
         results: Dictionary with all results
     """
-    
+    os.makedirs(RESULTS_PATH, exist_ok=True)
     print("="*80)
     print("ECG CLASSIFICATION PIPELINE")
     print("="*80)
@@ -125,17 +127,15 @@ def run_complete_pipeline(train_df, y_train, val_df, y_val, test_df, y_test,
     
     # 6. Visualizations
     print("\nGenerating visualizations...")
-    plot_training_history(history, save_path=f'{model_name}_{mode}_history.png')
+    plot_training_history(history, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_history.png'))
     
     if class_names:
-        plot_confusion_matrices(y_true, y_pred, class_names, 
-                               save_path=f'{model_name}_{mode}_confusion.png')
-        plot_roc_curves(y_true, y_scores, class_names,
-                       save_path=f'{model_name}_{mode}_roc.png')
-        plot_precision_recall_curves(y_true, y_scores, class_names,
-                                    save_path=f'{model_name}_{mode}_pr.png')
-        plot_confusion_matrix_all_classes(y_true, y_pred, class_names, 
-                               save_path=f'{model_name}_{mode}_confusion_all_classes.png')
+        plot_training_history(history, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_history.png'))
+        plot_confusion_matrices(y_true, y_pred, class_names, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_confusion.png'))
+        plot_roc_curves(y_true, y_scores, class_names, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_roc.png'))
+        plot_precision_recall_curves(y_true, y_scores, class_names, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_pr.png'))
+        plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=os.path.join(RESULTS_PATH, f'{model_name}_{mode}_confusion_all_classes.png'))
+
     
     # 7. Return results
     results = {

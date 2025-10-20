@@ -2,3 +2,4 @@
 .ecg/*
 datasets/
 datasets/*
+*.zip
