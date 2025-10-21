@@ -70,18 +70,6 @@ if __name__ == '__main__':
     
     
     # --- Split the data based on predefined folds ---
-    # train_fold, val_fold, test_fold = 8, 9, 10
-
-    # print("\nUsing fold-based data split...")
-    # train_df = data[data.strat_fold < train_fold]
-    # y_train = superclass_labels[data.strat_fold < train_fold]
-
-    # val_df = data[data.strat_fold == val_fold]
-    # y_val = superclass_labels[data.strat_fold == val_fold]
-
-    # test_df = data[data.strat_fold == test_fold]
-    # y_test = superclass_labels[data.strat_fold == test_fold]
-    
     # masks
     mask_train = data["strat_fold"] < 8
     mask_val   = data["strat_fold"] == 9
@@ -156,10 +144,10 @@ if __name__ == '__main__':
         # Define experiments to run
         experiments = [
             # Compare single modalities with Swin
-            # {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
-            # {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
-            # {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
-            # {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
+            {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
+            {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
+            {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
+            {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
             
             # Compare fusion strategies
             {'model': 'swin_fusion', 'mode': 'composite_both', 'fusion': 'early', 'name': 'Swin-Fusion-Early'},
@@ -315,7 +303,7 @@ if __name__ == '__main__':
         # Extract validation F1 scores from history (last epoch)
         weights = []
         for name, res in all_results.items():
-            val_f1 = res['history']['val_f1'][-1]  # Last validation F1
+            val_f1 = res['history']['val_f1_macro'][-1]  # Last validation F1
             weights.append(val_f1)
         
         # Normalize weights
