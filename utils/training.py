@@ -67,7 +67,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, threshold=0
         
         # Forward pass with mixed precision
         if use_amp:
-            with autocast():
+            with autocast(device_type='cuda'):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
             
@@ -311,32 +311,71 @@ def evaluate_model(model, test_loader, device, threshold=0.5, class_names=None):
 # TEST TIME AUGMENTATION (TTA)
 # ============================================================================
 
+# def predict_with_tta(model, dataloader, device, n_augments=5):
+#     """Predictions with test-time augmentation"""
+#     model.eval()
+    
+#     all_scores = []
+#     all_labels = None  # Changed from []
+    
+#     with torch.no_grad():
+#         for aug_idx in range(n_augments):
+#             batch_scores = []
+            
+#             for images, labels in tqdm(dataloader, desc=f'TTA pass {aug_idx+1}/{n_augments}'):
+#                 images = images.to(device)
+#                 outputs = model(images)
+#                 scores = torch.sigmoid(outputs)
+                
+#                 batch_scores.append(scores.cpu().numpy())
+                
+#                 # Only collect labels once
+#                 if all_labels is None:
+#                     if aug_idx == 0:
+#                         if 'batch_labels' not in locals():
+#                             batch_labels = []
+#                         batch_labels.append(labels.cpu().numpy())
+            
+#             all_scores.append(np.vstack(batch_scores))
+            
+#             # Stack labels after first pass
+#             if all_labels is None and aug_idx == 0:
+#                 all_labels = np.vstack(batch_labels)
+    
+#     # Average predictions across augmentations
+#     avg_scores = np.mean(all_scores, axis=0)
+    
+#     return all_labels, avg_scores
 def predict_with_tta(model, dataloader, device, n_augments=5):
     """Predictions with test-time augmentation"""
     model.eval()
     
-    all_scores = []
-    all_labels = []
+    all_augment_scores = []
+    y_true = None
     
     with torch.no_grad():
-        for _ in range(n_augments):
-            batch_scores = []
-            batch_labels = []
+        for aug_idx in range(n_augments):
+            aug_scores = []
+            aug_labels = []
             
-            for images, labels in tqdm(dataloader, desc=f'TTA pass'):
+            for images, labels in tqdm(dataloader, desc=f'TTA pass {aug_idx+1}/{n_augments}'):
                 images = images.to(device)
                 outputs = model(images)
                 scores = torch.sigmoid(outputs)
                 
-                batch_scores.append(scores.cpu().numpy())
-                if len(batch_labels) == 0:
-                    batch_labels.append(labels.cpu().numpy())
+                aug_scores.append(scores.cpu().numpy())
+                
+                # Only collect labels on first augmentation pass
+                if aug_idx == 0:
+                    aug_labels.append(labels.cpu().numpy())
             
-            all_scores.append(np.vstack(batch_scores))
-            if len(all_labels) == 0:
-                all_labels = np.vstack(batch_labels)
+            all_augment_scores.append(np.vstack(aug_scores))
+            
+            # Store true labels from first pass
+            if y_true is None:
+                y_true = np.vstack(aug_labels)
     
-    # Average predictions across augmentations
-    avg_scores = np.mean(all_scores, axis=0)
+    # Average predictions across all augmentations
+    y_scores = np.mean(all_augment_scores, axis=0)
     
-    return all_labels, avg_scores
+    return y_true, y_scores
