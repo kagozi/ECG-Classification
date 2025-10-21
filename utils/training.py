@@ -4,7 +4,8 @@ from tqdm import tqdm
 from .metrics import compute_metrics
 import pandas as pd
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast
+from torch.cuda.amp import GradScaler
 
 
 # ============================================================================
@@ -67,7 +68,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, threshold=0
         
         # Forward pass with mixed precision
         if use_amp:
-            with autocast(device_type='cuda'):
+            with autocast(device_type='cuda', dtype=torch.float16):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
             
