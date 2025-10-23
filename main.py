@@ -70,18 +70,6 @@ if __name__ == '__main__':
     
     
     # --- Split the data based on predefined folds ---
-    # train_fold, val_fold, test_fold = 8, 9, 10
-
-    # print("\nUsing fold-based data split...")
-    # train_df = data[data.strat_fold < train_fold]
-    # y_train = superclass_labels[data.strat_fold < train_fold]
-
-    # val_df = data[data.strat_fold == val_fold]
-    # y_val = superclass_labels[data.strat_fold == val_fold]
-
-    # test_df = data[data.strat_fold == test_fold]
-    # y_test = superclass_labels[data.strat_fold == test_fold]
-    
     # masks
     mask_train = data["strat_fold"] < 8
     mask_val   = data["strat_fold"] == 9
@@ -156,10 +144,10 @@ if __name__ == '__main__':
         # Define experiments to run
         experiments = [
             # Compare single modalities with Swin
-            # {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
-            # {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
-            # {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
-            # {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
+            {'model': 'swin', 'mode': 'composite_scalogram', 'name': 'Swin-Composite-Scalo'},
+            {'model': 'swin', 'mode': 'composite_phasogram', 'name': 'Swin-Composite-Phaso'},
+            {'model': 'swin', 'mode': 'lead2_scalogram', 'name': 'Swin-Lead2-Scalo'},
+            {'model': 'swin', 'mode': 'lead2_phasogram', 'name': 'Swin-Lead2-Phaso'},
             
             # Compare fusion strategies
             {'model': 'swin_fusion', 'mode': 'composite_both', 'fusion': 'early', 'name': 'Swin-Fusion-Early'},
@@ -292,7 +280,7 @@ if __name__ == '__main__':
         print(f"\nTop {top_k} models selected:")
         for i, (name, res) in enumerate(top_models, 1):
             print(f"  {i}. {name:<25} F1: {res['test_metrics']['f1_macro']:.4f}")
-        
+        # Ensembe 2 models only 
         # Ensemble top-k predictions
         top_scores = [res['predictions']['y_scores'] for name, res in top_models]
         ensemble_top_scores = np.mean(top_scores, axis=0)
@@ -315,7 +303,7 @@ if __name__ == '__main__':
         # Extract validation F1 scores from history (last epoch)
         weights = []
         for name, res in all_results.items():
-            val_f1 = res['history']['val_f1'][-1]  # Last validation F1
+            val_f1 = res['history']['val_f1_macro'][-1]  # Last validation F1
             weights.append(val_f1)
         
         # Normalize weights
@@ -503,7 +491,8 @@ if __name__ == '__main__':
             ensemble_pred_df[f'score_weighted_{class_name}'] = ensemble_weighted_scores[:, i]
         
         ensemble_output_path = 'predictions_ensemble.csv'
-        ensemble_pred_df.to_csv(ensemble_output_path, index=False)
+       
+        ensemble_pred_df.to_csv(os.path.join(RESULTS_PATH, ensemble_output_path), index=False)
         print(f"Ensemble predictions saved to: {ensemble_output_path}")
 
         
@@ -520,93 +509,3 @@ if __name__ == '__main__':
         improvement = ((best_ensemble[1] - best_model[1]['test_metrics']['f1_macro']) / 
                     best_model[1]['test_metrics']['f1_macro'] * 100)
         print(f"\n📈 Ensemble Improvement: +{improvement:.2f}%")
-        
-        print(f"\n{'='*80}")
-        print("Next Steps & Recommendations:")
-        print("="*80)
-    print("""
-    1. SINGLE MODALITY EXPERIMENTS:
-    - Try: mode='composite_scalogram' vs 'composite_phasogram'
-    - Try: mode='lead2_scalogram' vs 'lead2_phasogram'
-    - Compare which representation works best
-
-    2. FUSION EXPERIMENTS:
-    - Try: model='swin_fusion', mode='composite_both', fusion_type='early'
-    - Try: model='swin_fusion', mode='composite_both', fusion_type='late'
-    - Try: model='swin_fusion', mode='lead2_both'
-    - Compare fusion strategies
-
-    3. MODEL COMPARISON:
-    - Compare CNNs (ResNet, EfficientNet) vs Transformers (ViT, Swin)
-    - Test different Swin variants (tiny, small, base, large)
-    - Consider compute-accuracy tradeoffs
-
-    4. OPTIMIZATION:
-    - Use test-time augmentation (use_tta=True)
-    - Try ensemble of best models
-    - Experiment with different learning rates
-    - Adjust batch size based on GPU memory
-
-    5. ANALYSIS:
-    - Review training curves for overfitting
-    - Analyze per-class performance
-    - Check which modality helps which class
-    - Consider class-specific thresholding
-    """)
-
-    print("="*80)
-
-    # ============================================================================
-    # TIPS FOR HIGH SCORES WITH FUSION
-    # ============================================================================
-
-    print("\n" + "="*80)
-    print("TIPS FOR ACHIEVING HIGH SCORES WITH FUSION MODELS")
-    print("="*80)
-    print("""
-    1. Data Strategy:
-    ✓ Scalograms capture magnitude/energy information
-    ✓ Phasograms capture timing/synchronization information
-    ✓ Fusion combines complementary features
-    ✓ Try both composite (all leads) and Lead II variants
-
-    2. Fusion Strategy:
-    - Early Fusion: Better when modalities are highly correlated
-    - Late Fusion: Better when modalities provide independent information
-    - Start with early fusion (faster, fewer parameters)
-
-    3. Model Selection:
-    - Swin Transformers: Best for capturing long-range patterns
-    - swin_base: Good balance of performance and speed
-    - swin_large: Best performance but slower
-    - swin_small/tiny: For faster experiments
-
-    4. Training Best Practices:
-    ✓ Lower learning rate for fusion models (3e-5 to 5e-5)
-    ✓ More epochs may help (30-40)
-    ✓ Watch for overfitting with 6-channel inputs
-    ✓ Consider gradient accumulation for stability
-
-    5. Evaluation:
-    ✓ Always compare fusion vs single modality
-    ✓ Check if fusion actually improves scores
-    ✓ Some classes may benefit more from fusion
-    ✓ Ensemble fusion + single modality models
-    ✓ Try weighted ensemble based on validation performance
-
-    6. Ensemble Strategies:
-    - Simple Average: Equal weight to all models
-    - Top-K Average: Only best performing models
-    - Weighted Average: Weight by validation F1 score
-    - Diversity matters: Mix CNNs + Transformers, scalograms + phasograms
-
-    Expected Performance Hierarchy:
-    Single Modality (3ch) < Early Fusion (6ch) < Late Fusion (6ch) < Ensemble of Best
-    
-    Typical Improvements:
-    - Fusion over single: +1-3% F1
-    - Ensemble over best single: +2-5% F1
-    - Weighted ensemble: +0.5-1% over simple average
-    """)
-
-print("="*80)

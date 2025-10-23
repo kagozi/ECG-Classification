@@ -25,6 +25,31 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         else:
             return focal_loss
+        
+class FocalLossWithClassWeights(nn.Module):
+    def __init__(self, class_alpha=[0.10, 0.20, 0.30, 0.20, 0.20], gamma=2.0, smoothing=0.1, device='cuda'):
+        super(FocalLossWithClassWeights, self).__init__()
+        self.class_alpha = torch.tensor(class_alpha).to(device)
+        self.gamma = gamma
+        self.smoothing = smoothing
+        self.device = device
+
+    def forward(self, inputs, targets):
+        # One-hot encode and apply label smoothing
+        targets = F.one_hot(targets, num_classes=inputs.size(1)).float()
+        targets = targets * (1 - self.smoothing) + self.smoothing / inputs.size(1)
+
+        # Compute log-softmax and cross-entropy manually
+        log_probs = F.log_softmax(inputs, dim=1)
+        ce_loss = -(targets * log_probs).sum(dim=1)
+
+        # Compute focal loss components
+        pt = torch.exp(-ce_loss)
+        alpha_weights = self.class_alpha[targets.argmax(dim=1)]
+        focal_loss = alpha_weights * (1 - pt) ** self.gamma * ce_loss
+
+        return focal_loss.mean()
+
 
 class AsymmetricLoss(nn.Module):
     """Asymmetric Loss for multi-label classification"""
