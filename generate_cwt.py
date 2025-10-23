@@ -187,12 +187,30 @@ class CWTGenerator:
             scalograms.flush()
             phasograms.flush()
         
-        print(f"✓ Saved scalograms to: {output_scalo_path}")
-        print(f"✓ Saved phasograms to: {output_phaso_path}")
-        
-        # Clean up memmap
+        # Clean up memmap references
         del scalograms
         del phasograms
+        
+        # Now load and save as regular numpy arrays for easier loading
+        print(f"Converting to standard numpy format...")
+        scalograms_final = np.memmap(output_scalo_path, dtype='float32', mode='r', shape=shape)
+        phasograms_final = np.memmap(output_phaso_path, dtype='float32', mode='r', shape=shape)
+        
+        # Save as standard .npy files (this will allow easy loading with mmap_mode)
+        np.save(output_scalo_path.replace('.npy', '_final.npy'), scalograms_final)
+        np.save(output_phaso_path.replace('.npy', '_final.npy'), phasograms_final)
+        
+        # Remove temporary memmap files
+        del scalograms_final
+        del phasograms_final
+        
+        # Rename final files
+        import shutil
+        shutil.move(output_scalo_path.replace('.npy', '_final.npy'), output_scalo_path)
+        shutil.move(output_phaso_path.replace('.npy', '_final.npy'), output_phaso_path)
+        
+        print(f"✓ Saved scalograms to: {output_scalo_path}")
+        print(f"✓ Saved phasograms to: {output_phaso_path}")
 
 # ============================================================================
 # MAIN EXECUTION
