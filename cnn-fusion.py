@@ -1,5 +1,5 @@
 # ============================================================================
-# COMPLETE PIPELINE: Raw ECG → Standardized → CWT → CNN Models
+# MEMORY-EFFICIENT PIPELINE (FULL-SIZED MODELS): Raw ECG → Standardized → CWT → CNN Models
 # ============================================================================
 
 import os
@@ -19,39 +19,45 @@ from tqdm import tqdm
 import wfdb
 import pywt
 from scipy.ndimage import zoom
+from config.constants import DATA_PATH, PROCESSED_PATH
 
 # ============================================================================
-# PART 1: DATA LOADING (Same as XResNet1D)
+# PART 1: MEMORY-EFFICIENT DATA LOADING
 # ============================================================================
 
 def load_ptbxl_dataset(data_path, processed_path, sampling_rate=100):
-    """Load PTB-XL dataset"""
+    """Load PTB-XL dataset metadata only"""
     Y = pd.read_csv(data_path + 'ptbxl_database.csv', index_col='ecg_id')
     Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
-    X = load_raw_signals(Y, sampling_rate, data_path, processed_path)
-    return X, Y
+    return Y
 
-
-def load_raw_signals(df, sampling_rate, data_path, processed_path):
-    """Load raw ECG signals"""
-    os.makedirs(processed_path, exist_ok=True)
-    cache_file = os.path.join(processed_path, f'raw{sampling_rate}.npy')
+class ECGDataset(Dataset):
+    """Memory-efficient ECG dataset that loads signals on-the-fly"""
     
-    if os.path.exists(cache_file):
-        print(f"Loading cached data from {cache_file}")
-        data = np.load(cache_file, allow_pickle=True)
-    else:
-        print(f"Loading and caching raw signals at {sampling_rate}Hz")
-        if sampling_rate == 100:
-            data = [wfdb.rdsamp(data_path + f) for f in tqdm(df.filename_lr)]
+    def __init__(self, df, data_path, sampling_rate=100, transform=None):
+        self.df = df
+        self.data_path = data_path
+        self.sampling_rate = sampling_rate
+        self.transform = transform
+        self.filenames = df.filename_lr.values if sampling_rate == 100 else df.filename_hr.values
+    
+    def __len__(self):
+        return len(self.df)
+    
+    def __getitem__(self, idx):
+        # Load single ECG signal
+        filename = self.filenames[idx]
+        if self.sampling_rate == 100:
+            signal, meta = wfdb.rdsamp(self.data_path + filename)
         else:
-            data = [wfdb.rdsamp(data_path + f) for f in tqdm(df.filename_hr)]
+            signal, meta = wfdb.rdsamp(self.data_path + filename)
         
-        data = np.array([signal for signal, meta in data])
-        np.save(cache_file, data)
-    
-    return data
-
+        signal = signal.astype(np.float32)
+        
+        if self.transform:
+            signal = self.transform(signal)
+        
+        return signal
 
 def aggregate_diagnostic_labels(df, scp_statements_path):
     """Aggregate SCP codes into superclasses"""
@@ -72,60 +78,67 @@ def aggregate_diagnostic_labels(df, scp_statements_path):
     
     return df
 
-
-def prepare_labels(X, Y, min_samples=0):
+def prepare_labels(df, min_samples=0):
     """Convert to multi-hot encoding"""
     mlb = MultiLabelBinarizer()
     
-    counts = pd.Series(np.concatenate(Y.diagnostic_superclass.values)).value_counts()
+    counts = pd.Series(np.concatenate(df.diagnostic_superclass.values)).value_counts()
     counts = counts[counts > min_samples]
     
-    Y.diagnostic_superclass = Y.diagnostic_superclass.apply(
+    df.diagnostic_superclass = df.diagnostic_superclass.apply(
         lambda x: list(set(x).intersection(set(counts.index.values)))
     )
-    Y['diagnostic_len'] = Y.diagnostic_superclass.apply(lambda x: len(x))
+    df['diagnostic_len'] = df.diagnostic_superclass.apply(lambda x: len(x))
     
-    X = X[Y.diagnostic_len > 0]
-    Y = Y[Y.diagnostic_len > 0]
+    df_filtered = df[df.diagnostic_len > 0]
     
-    mlb.fit(Y.diagnostic_superclass.values)
-    y = mlb.transform(Y.diagnostic_superclass.values)
+    mlb.fit(df_filtered.diagnostic_superclass.values)
+    y = mlb.transform(df_filtered.diagnostic_superclass.values)
     
     print(f"Classes: {mlb.classes_}")
-    print(f"Number of samples: {len(X)}")
+    print(f"Number of samples: {len(df_filtered)}")
     
-    return X, Y, y, mlb
+    return df_filtered, y, mlb
 
 # ============================================================================
-# PART 2: STANDARDIZATION (Z-Score Normalization)
+# PART 2: BATCHED STANDARDIZATION
 # ============================================================================
 
-def preprocess_signals(X_train, X_val, X_test):
-    """Standardize signals using Z-score normalization"""
-    # Fit StandardScaler on training data
-    ss = StandardScaler()
-    ss.fit(np.vstack(X_train).flatten()[:, np.newaxis].astype(float))
+class Standardizer:
+    """Z-score standardization fitted on batches"""
     
-    # Apply to all sets
-    X_train_scaled = apply_standardizer(X_train, ss)
-    X_val_scaled = apply_standardizer(X_val, ss)
-    X_test_scaled = apply_standardizer(X_test, ss)
+    def __init__(self):
+        self.mean_ = None
+        self.std_ = None
+        self.fitted = False
     
-    print(f"Standardization stats - Mean: {ss.mean_[0]:.4f}, Std: {ss.scale_[0]:.4f}")
+    def fit_on_dataset(self, ecg_dataset, num_samples=1000):
+        """Fit scaler on a subset of the dataset"""
+        print("Computing standardization statistics...")
+        
+        # Sample random indices for fitting
+        indices = np.random.choice(len(ecg_dataset), min(num_samples, len(ecg_dataset)), replace=False)
+        
+        all_data = []
+        for idx in tqdm(indices, desc="Fitting standardizer"):
+            ecg = ecg_dataset[idx]
+            all_data.append(ecg.flatten())
+        
+        all_data = np.concatenate(all_data)
+        self.mean_ = np.mean(all_data)
+        self.std_ = np.std(all_data)
+        self.fitted = True
+        
+        print(f"Standardization stats - Mean: {self.mean_:.4f}, Std: {self.std_:.4f}")
     
-    return X_train_scaled, X_val_scaled, X_test_scaled, ss
-
-
-def apply_standardizer(X, ss):
-    """Apply standardization to signals"""
-    X_tmp = []
-    for x in tqdm(X, desc="Standardizing"):
-        x_shape = x.shape
-        X_tmp.append(ss.transform(x.flatten()[:, np.newaxis]).reshape(x_shape))
-    return np.array(X_tmp)
+    def transform(self, data):
+        """Transform data using fitted scaler"""
+        if not self.fitted:
+            raise ValueError("Scaler not fitted yet")
+        return (data - self.mean_) / self.std_
 
 # ============================================================================
-# PART 3: CWT GENERATION FROM STANDARDIZED SIGNALS
+# PART 3: ON-THE-FLY CWT GENERATION (FULL SIZE)
 # ============================================================================
 
 class CWTGenerator:
@@ -136,9 +149,9 @@ class CWTGenerator:
         self.image_size = image_size
         self.wavelet = wavelet
         
-        # Generate scales for target frequency range
+        # Generate scales for target frequency range (ORIGINAL SIZE)
         freq_min, freq_max = 0.5, 40.0
-        n_scales = 128
+        n_scales = 128  # ORIGINAL NUMBER OF SCALES
         
         cf = pywt.central_frequency(wavelet)
         freqs = np.logspace(np.log10(freq_min), np.log10(freq_max), n_scales)
@@ -202,27 +215,27 @@ class CWTGenerator:
         )
         return zoom(cwt_matrix, zoom_factors, order=1)
     
-    def process_12_lead_ecg(self, ecg_12_lead):
+    def process_single_ecg(self, ecg_signal):
         """
-        Process 12-lead ECG to generate scalogram and phasogram
+        Process single ECG to generate scalogram and phasogram (12 leads)
         
         Args:
-            ecg_12_lead: (time, 12) or (12, time) array
+            ecg_signal: (time, 12) array
             
         Returns:
             scalogram: (12, H, W) array
             phasogram: (12, H, W) array
         """
         # Ensure shape is (12, time)
-        if ecg_12_lead.shape[0] != 12:
-            ecg_12_lead = ecg_12_lead.T
+        if ecg_signal.shape[0] != 12:
+            ecg_signal = ecg_signal.T
         
         scalograms = []
         phasograms = []
         
         for lead_idx in range(12):
             # Compute CWT for this lead
-            coeffs = self.compute_cwt_single_lead(ecg_12_lead[lead_idx])
+            coeffs = self.compute_cwt_single_lead(ecg_signal[lead_idx])
             
             if coeffs is None:
                 # If CWT fails, use zeros
@@ -246,161 +259,51 @@ class CWTGenerator:
         phasogram_12ch = np.stack(phasograms, axis=0)
         
         return scalogram_12ch, phasogram_12ch
-    
-    def process_dataset(self, X, cache_dir=None, cache_name='cwt'):
-        """
-        Process entire dataset
-        
-        Args:
-            X: (N, time, 12) or (N, 12, time) array of ECG signals
-            cache_dir: Directory to cache results
-            cache_name: Name for cache files
-            
-        Returns:
-            scalograms: (N, 12, H, W) array
-            phasograms: (N, 12, H, W) array
-        """
-        if cache_dir is not None:
-            os.makedirs(cache_dir, exist_ok=True)
-            scalo_cache = os.path.join(cache_dir, f'{cache_name}_scalograms.npy')
-            phaso_cache = os.path.join(cache_dir, f'{cache_name}_phasograms.npy')
-            
-            if os.path.exists(scalo_cache) and os.path.exists(phaso_cache):
-                print(f"Loading cached CWT data from {cache_dir}")
-                scalograms = np.load(scalo_cache)
-                phasograms = np.load(phaso_cache)
-                return scalograms, phasograms
-        
-        print(f"Generating CWT representations for {len(X)} samples...")
-        scalograms = []
-        phasograms = []
-        
-        for i, ecg in enumerate(tqdm(X)):
-            scalo, phaso = self.process_12_lead_ecg(ecg)
-            scalograms.append(scalo)
-            phasograms.append(phaso)
-        
-        scalograms = np.array(scalograms)
-        phasograms = np.array(phasograms)
-        
-        # Cache results
-        if cache_dir is not None:
-            print(f"Caching CWT data to {cache_dir}")
-            np.save(scalo_cache, scalograms)
-            np.save(phaso_cache, phasograms)
-        
-        print(f"Generated scalograms: {scalograms.shape}")
-        print(f"Generated phasograms: {phasograms.shape}")
-        
-        return scalograms, phasograms
 
-# ============================================================================
-# PART 4: PYTORCH DATASETS
-# ============================================================================
-
-class CWTDataset(Dataset):
-    """Dataset for CWT representations"""
+class CWTOnTheFlyDataset(Dataset):
+    """Generate CWT representations on-the-fly during training"""
     
-    def __init__(self, scalograms, phasograms, labels, mode='scalogram'):
-        """
-        Args:
-            scalograms: (N, 12, H, W) array
-            phasograms: (N, 12, H, W) array
-            labels: (N, num_classes) array
-            mode: 'scalogram', 'phasogram', 'both', or 'fusion'
-        """
-        self.scalograms = torch.FloatTensor(scalograms)
-        self.phasograms = torch.FloatTensor(phasograms)
+    def __init__(self, ecg_dataset, cwt_generator, labels, standardizer=None, mode='scalogram'):
+        self.ecg_dataset = ecg_dataset
+        self.cwt_generator = cwt_generator
         self.labels = torch.FloatTensor(labels)
+        self.standardizer = standardizer
         self.mode = mode
     
     def __len__(self):
-        return len(self.labels)
+        return len(self.ecg_dataset)
     
     def __getitem__(self, idx):
+        # Load and standardize ECG
+        ecg = self.ecg_dataset[idx]
+        
+        if self.standardizer:
+            ecg = self.standardizer.transform(ecg)
+        
+        # Generate CWT
+        scalogram, phasogram = self.cwt_generator.process_single_ecg(ecg)
+        
         if self.mode == 'scalogram':
-            return self.scalograms[idx], self.labels[idx]
+            return torch.FloatTensor(scalogram), self.labels[idx]
         elif self.mode == 'phasogram':
-            return self.phasograms[idx], self.labels[idx]
+            return torch.FloatTensor(phasogram), self.labels[idx]
         elif self.mode == 'both':
-            return (self.scalograms[idx], self.phasograms[idx]), self.labels[idx]
+            return (torch.FloatTensor(scalogram), torch.FloatTensor(phasogram)), self.labels[idx]
         elif self.mode == 'fusion':
-            # Concatenate along channel dimension: (12, H, W) + (12, H, W) = (24, H, W)
-            fused = torch.cat([self.scalograms[idx], self.phasograms[idx]], dim=0)
-            return fused, self.labels[idx]
+            # Concatenate along channel dimension
+            fused = np.concatenate([scalogram, phasogram], axis=0)
+            return torch.FloatTensor(fused), self.labels[idx]
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
 
 # ============================================================================
-# PART 5: MODEL ARCHITECTURES
+# PART 4: ORIGINAL MODEL ARCHITECTURES (FULL SIZE)
 # ============================================================================
-
-class CWT1DCNN(nn.Module):
-    """
-    1D CNN for CWT coefficients (12 channels)
-    Treats CWT as (batch, 12_channels, time) sequence
-    """
-    
-    def __init__(self, num_classes=5, num_channels=12):
-        super().__init__()
-        
-        # Process 12 channels along time axis
-        self.conv1 = nn.Sequential(
-            nn.Conv1d(num_channels, 64, kernel_size=7, stride=2, padding=3),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.MaxPool1d(3, stride=2, padding=1)
-        )
-        
-        self.conv2 = self._make_block(64, 128, stride=2)
-        self.conv3 = self._make_block(128, 256, stride=2)
-        self.conv4 = self._make_block(256, 512, stride=2)
-        
-        # Pooling
-        self.avgpool = nn.AdaptiveAvgPool1d(1)
-        self.maxpool = nn.AdaptiveMaxPool1d(1)
-        
-        # Classifier
-        self.fc = nn.Sequential(
-            nn.Linear(512 * 2, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_classes)
-        )
-        
-        print(f"CWT1DCNN: {sum(p.numel() for p in self.parameters())/1e6:.1f}M params")
-    
-    def _make_block(self, in_ch, out_ch, stride=1):
-        return nn.Sequential(
-            nn.Conv1d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1),
-            nn.BatchNorm1d(out_ch),
-            nn.ReLU(),
-            nn.Conv1d(out_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm1d(out_ch),
-            nn.ReLU()
-        )
-    
-    def forward(self, x):
-        # Input: (B, 12, H, W) - treat as (B, 12, H*W) for 1D processing
-        B, C, H, W = x.shape
-        x = x.view(B, C, H * W)  # Flatten spatial dimensions
-        
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-        
-        x_avg = self.avgpool(x)
-        x_max = self.maxpool(x)
-        x = torch.cat([x_avg, x_max], dim=1).flatten(1)
-        
-        return self.fc(x)
-
 
 class CWT2DCNN(nn.Module):
     """
     2D CNN for CWT treating 12 leads as channels
-    More appropriate than transformers for time-frequency data
+    ORIGINAL FULL-SIZED MODEL
     """
     
     def __init__(self, num_classes=5, num_channels=12):
@@ -465,7 +368,6 @@ class CWT2DCNN(nn.Module):
         
         return self.fc(x)
 
-
 class ResidualBlock2D(nn.Module):
     """Residual block for 2D CNN"""
     
@@ -489,7 +391,6 @@ class ResidualBlock2D(nn.Module):
         out += identity
         out = F.relu(out)
         return out
-
 
 class DualStreamCNN(nn.Module):
     """Dual-stream CNN for scalogram + phasogram fusion"""
@@ -521,40 +422,46 @@ class DualStreamCNN(nn.Module):
         combined = torch.cat([feat_scalo, feat_phaso], dim=1)
         return self.fusion_fc(combined)
 
-
 # ============================================================================
-# PART 6: TRAINING FUNCTIONS
+# PART 5: TRAINING FUNCTIONS WITH GRADIENT ACCUMULATION
 # ============================================================================
 
-def train_epoch(model, dataloader, criterion, optimizer, device):
-    """Train for one epoch"""
+def train_epoch_memory_efficient(model, dataloader, criterion, optimizer, device, accumulation_steps=4):
+    """Train for one epoch with gradient accumulation"""
     model.train()
     running_loss = 0.0
+    optimizer.zero_grad()
     
-    for batch in tqdm(dataloader, desc="Training", leave=False):
+    for i, batch in enumerate(tqdm(dataloader, desc="Training", leave=False)):
         if isinstance(batch[0], tuple):
             (x1, x2), y = batch
             x1, x2, y = x1.to(device), x2.to(device), y.to(device)
-            optimizer.zero_grad()
             outputs = model(x1, x2)
         else:
             x, y = batch
             x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
             outputs = model(x)
         
-        loss = criterion(outputs, y)
+        loss = criterion(outputs, y) / accumulation_steps
         loss.backward()
+        
+        if (i + 1) % accumulation_steps == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            optimizer.zero_grad()
+        
+        running_loss += loss.item() * accumulation_steps * y.size(0)
+    
+    # Handle any remaining gradients
+    if len(dataloader) % accumulation_steps != 0:
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        
-        running_loss += loss.item() * y.size(0)
+        optimizer.zero_grad()
     
     return running_loss / len(dataloader.dataset)
 
-
 @torch.no_grad()
-def validate(model, dataloader, criterion, device):
+def validate_memory_efficient(model, dataloader, criterion, device):
     """Validate model"""
     model.eval()
     running_loss = 0.0
@@ -580,7 +487,6 @@ def validate(model, dataloader, criterion, device):
     
     return running_loss / len(dataloader.dataset), np.vstack(all_preds), np.vstack(all_labels)
 
-
 def compute_metrics(y_true, y_pred, y_scores):
     """Compute evaluation metrics"""
     macro_auc = roc_auc_score(y_true, y_scores, average='macro')
@@ -593,118 +499,66 @@ def compute_metrics(y_true, y_pred, y_scores):
         'f_beta_macro': f_beta
     }
 
-
-def plot_confusion_matrices(y_true, y_pred, class_names, save_path=None):
-    """Plot confusion matrix for each class (one subplot per class)"""
-    n_classes = y_true.shape[1]
-    fig, axes = plt.subplots(1, n_classes, figsize=(4*n_classes, 4))
-    
-    if n_classes == 1:
-        axes = [axes]
-    
-    for i, (ax, class_name) in enumerate(zip(axes, class_names)):
-        cm = confusion_matrix(y_true[:, i], y_pred[:, i])
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-        ax.set_title(f'{class_name}')
-        ax.set_ylabel('True')
-        ax.set_xlabel('Predicted')
-    
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
-
-
-def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=None, 
-                                     title="Confusion Matrix - All Classes"):
-    """
-    Plot single confusion matrix showing all classes together.
-    For multi-label classification, convert to multi-class by taking highest probability.
-    """
-    # Convert multi-label to multi-class by taking the class with highest probability
-    y_true_single = np.argmax(y_true, axis=1)
-    y_pred_single = np.argmax(y_pred, axis=1)
-    
-    cm = confusion_matrix(y_true_single, y_pred_single, labels=range(len(class_names)))
-    
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
-                xticklabels=class_names, 
-                yticklabels=class_names,
-                cbar_kws={'shrink': 0.8})
-    plt.xlabel("Predicted", fontsize=12)
-    plt.ylabel("True", fontsize=12)
-    plt.title(title, fontsize=14)
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
-
-
 # ============================================================================
-# PART 7: MAIN TRAINING PIPELINE
+# PART 6: MAIN PIPELINE WITH ON-THE-FLY PROCESSING
 # ============================================================================
 
 def main():
+    # Configuration (ORIGINAL SIZES)
     from config.constants import DATA_PATH, PROCESSED_PATH
-    # Configuration
     DATA_PATH = DATA_PATH
     PROCESSED_PATH = PROCESSED_PATH
     SAMPLING_RATE = 100
-    IMAGE_SIZE = 224
-    BATCH_SIZE = 32
+    IMAGE_SIZE = 224  # ORIGINAL IMAGE SIZE
+    BATCH_SIZE = 8    # Reduced batch size with gradient accumulation
+    ACCUMULATION_STEPS = 4  # Effective batch size = 8 * 4 = 32
     EPOCHS = 50
     LR = 0.001
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     print("="*80)
-    print("STANDARDIZED ECG → CWT → CNN PIPELINE")
+    print("MEMORY-EFFICIENT PIPELINE WITH FULL-SIZED MODELS")
     print("="*80)
     
-    # Step 1: Load data
-    print("\n[1/7] Loading PTB-XL dataset...")
-    X, Y = load_ptbxl_dataset(DATA_PATH, PROCESSED_PATH, SAMPLING_RATE)
+    # Step 1: Load metadata only
+    print("\n[1/7] Loading PTB-XL dataset metadata...")
+    Y = load_ptbxl_dataset(DATA_PATH, PROCESSED_PATH, SAMPLING_RATE)
     
     # Step 2: Process labels
     print("\n[2/7] Processing labels...")
     Y = aggregate_diagnostic_labels(Y, DATA_PATH + 'scp_statements.csv')
-    X, Y, y, mlb = prepare_labels(X, Y, min_samples=0)
+    Y_filtered, y, mlb = prepare_labels(Y, min_samples=0)
     
     # Step 3: Split data
     print("\n[3/7] Splitting data...")
-    X_train = X[Y.strat_fold <= 8]
-    y_train = y[Y.strat_fold <= 8]
-    X_val = X[Y.strat_fold == 9]
-    y_val = y[Y.strat_fold == 9]
-    X_test = X[Y.strat_fold == 10]
-    y_test = y[Y.strat_fold == 10]
+    train_df = Y_filtered[Y_filtered.strat_fold <= 8]
+    val_df = Y_filtered[Y_filtered.strat_fold == 9]
+    test_df = Y_filtered[Y_filtered.strat_fold == 10]
     
-    print(f"Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+    y_train = y[Y_filtered.strat_fold <= 8]
+    y_val = y[Y_filtered.strat_fold == 9]
+    y_test = y[Y_filtered.strat_fold == 10]
     
-    # Step 4: Standardize
-    print("\n[4/7] Standardizing signals (Z-score)...")
-    X_train, X_val, X_test, scaler = preprocess_signals(X_train, X_val, X_test)
+    print(f"Train: {len(train_df)}, Val: {len(val_df)}, Test: {len(test_df)}")
     
-    # Step 5: Generate CWT representations
-    print("\n[5/7] Generating CWT representations from standardized signals...")
+    # Step 4: Create ECG datasets (load on-the-fly)
+    print("\n[4/7] Creating memory-efficient ECG datasets...")
+    train_ecg_dataset = ECGDataset(train_df, DATA_PATH, SAMPLING_RATE)
+    val_ecg_dataset = ECGDataset(val_df, DATA_PATH, SAMPLING_RATE)
+    test_ecg_dataset = ECGDataset(test_df, DATA_PATH, SAMPLING_RATE)
+    
+    # Step 5: Compute standardization stats
+    print("\n[5/7] Computing standardization statistics...")
+    standardizer = Standardizer()
+    standardizer.fit_on_dataset(train_ecg_dataset, num_samples=1000)
+    
+    # Step 6: Initialize CWT generator (ORIGINAL SIZE)
+    print("\n[6/7] Initializing CWT generator...")
     cwt_gen = CWTGenerator(sampling_rate=SAMPLING_RATE, image_size=IMAGE_SIZE)
     
-    scalo_train, phaso_train = cwt_gen.process_dataset(
-        X_train, cache_dir=PROCESSED_PATH, cache_name='train'
-    )
-    scalo_val, phaso_val = cwt_gen.process_dataset(
-        X_val, cache_dir=PROCESSED_PATH, cache_name='val'
-    )
-    scalo_test, phaso_test = cwt_gen.process_dataset(
-        X_test, cache_dir=PROCESSED_PATH, cache_name='test'
-    )
+    # Step 7: Train different model configurations
+    print("\n[7/7] Training models...")
     
-    # Step 6: Create datasets
-    print("\n[6/7] Creating PyTorch datasets...")
-    
-    # Try different model configurations
     configs = [
         {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN'},
         {'mode': 'phasogram', 'model': 'CWT2DCNN', 'name': 'Phasogram-2DCNN'},
@@ -718,19 +572,14 @@ def main():
         print(f"Training: {config['name']}")
         print(f"{'='*80}")
         
-        # Create datasets
-        if config['mode'] == 'both':
-            train_dataset = CWTDataset(scalo_train, phaso_train, y_train, mode='both')
-            val_dataset = CWTDataset(scalo_val, phaso_val, y_val, mode='both')
-            test_dataset = CWTDataset(scalo_test, phaso_test, y_test, mode='both')
-        else:
-            train_dataset = CWTDataset(scalo_train, phaso_train, y_train, mode=config['mode'])
-            val_dataset = CWTDataset(scalo_val, phaso_val, y_val, mode=config['mode'])
-            test_dataset = CWTDataset(scalo_test, phaso_test, y_test, mode=config['mode'])
+        # Create CWT datasets (generate on-the-fly)
+        train_dataset = CWTOnTheFlyDataset(train_ecg_dataset, cwt_gen, y_train, standardizer, mode=config['mode'])
+        val_dataset = CWTOnTheFlyDataset(val_ecg_dataset, cwt_gen, y_val, standardizer, mode=config['mode'])
+        test_dataset = CWTOnTheFlyDataset(test_ecg_dataset, cwt_gen, y_test, standardizer, mode=config['mode'])
         
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
-        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
         
         # Create model
         if config['model'] == 'DualStream':
@@ -750,13 +599,15 @@ def main():
         for epoch in range(EPOCHS):
             print(f"\nEpoch {epoch+1}/{EPOCHS}")
             
-            # Train
-            train_loss = train_epoch(model, train_loader, criterion, optimizer, DEVICE)
+            # Train with gradient accumulation
+            train_loss = train_epoch_memory_efficient(
+                model, train_loader, criterion, optimizer, DEVICE, ACCUMULATION_STEPS
+            )
             
             # Validate
-            val_loss, val_preds, val_labels = validate(model, val_loader, criterion, DEVICE)
+            val_loss, val_preds, val_labels = validate_memory_efficient(model, val_loader, criterion, DEVICE)
             
-            # Compute metrics (using 0.5 threshold for now)
+            # Compute metrics
             val_pred_binary = (val_preds > 0.5).astype(int)
             val_metrics = compute_metrics(val_labels, val_pred_binary, val_preds)
             
@@ -774,7 +625,7 @@ def main():
         # Test
         print(f"\nTesting {config['name']}...")
         model.load_state_dict(torch.load(f"best_{config['name']}.pth"))
-        test_loss, test_preds, test_labels = validate(model, test_loader, criterion, DEVICE)
+        test_loss, test_preds, test_labels = validate_memory_efficient(model, test_loader, criterion, DEVICE)
         
         test_pred_binary = (test_preds > 0.5).astype(int)
         test_metrics = compute_metrics(test_labels, test_pred_binary, test_preds)
@@ -792,22 +643,6 @@ def main():
         print(f"  AUC: {test_metrics['macro_auc']:.4f}")
         print(f"  F1: {test_metrics['f1_macro']:.4f}")
         print(f"  F-beta: {test_metrics['f_beta_macro']:.4f}")
-        
-        # Plot confusion matrices
-        print(f"\nGenerating confusion matrices for {config['name']}...")
-        
-        # Per-class confusion matrices
-        plot_confusion_matrices(
-            test_labels, test_pred_binary, mlb.classes_,
-            save_path=f"cm_per_class_{config['name']}.png"
-        )
-        
-        # Single combined confusion matrix
-        plot_confusion_matrix_all_classes(
-            test_labels, test_pred_binary, mlb.classes_,
-            save_path=f"cm_combined_{config['name']}.png",
-            title=f"Confusion Matrix - {config['name']}"
-        )
     
     # Final comparison
     print("\n" + "="*80)
@@ -816,7 +651,7 @@ def main():
     print(f"{'Model':<30} | {'AUC':<8} | {'F1':<8} | {'F-beta':<8}")
     print("-" * 80)
     
-    # Prepare simplified results for JSON (without numpy arrays)
+    # Prepare simplified results for JSON
     results_summary = {}
     
     for name, metrics in results.items():
@@ -831,7 +666,7 @@ def main():
     
     # Save numeric results
     import json
-    with open('standardized_cwt_results.json', 'w') as f:
+    with open('memory_efficient_fullsize_results.json', 'w') as f:
         json.dump(results_summary, f, indent=2)
     
     # Create comparative visualization
@@ -874,14 +709,12 @@ def main():
     axes[2].grid(axis='y', alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('metrics_comparison.png', dpi=300, bbox_inches='tight')
+    plt.savefig('memory_efficient_metrics_comparison.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    print("\n✓ Pipeline complete!")
-    print("✓ Results saved to standardized_cwt_results.json")
-    print("✓ Confusion matrices saved as PNG files")
-    print("✓ Metrics comparison saved as metrics_comparison.png")
-
+    print("\n✓ Memory-efficient pipeline complete!")
+    print("✓ Results saved to memory_efficient_fullsize_results.json")
+    print("✓ Metrics comparison saved as memory_efficient_metrics_comparison.png")
 
 if __name__ == '__main__':
     main()
