@@ -19,7 +19,6 @@ from tqdm import tqdm
 import wfdb
 import pywt
 from scipy.ndimage import zoom
-from config.constants import DATA_PATH, PROCESSED_PATH
 
 # ============================================================================
 # PART 1: DATA LOADING (Same as XResNet1D)
@@ -649,6 +648,7 @@ def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=Non
 # ============================================================================
 
 def main():
+    from config.constants import DATA_PATH, PROCESSED_PATH
     # Configuration
     DATA_PATH = DATA_PATH
     PROCESSED_PATH = PROCESSED_PATH
