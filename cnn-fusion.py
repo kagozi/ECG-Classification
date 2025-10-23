@@ -12,14 +12,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
-from sklearn.metrics import fbeta_score, roc_auc_score, f1_score, hamming_loss
+from sklearn.metrics import fbeta_score, roc_auc_score, f1_score, hamming_loss, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 import wfdb
 import pywt
 from scipy.ndimage import zoom
-from config.constants import (PROCESSED_PATH, DATA_PATH)
+from config.constants import DATA_PATH, PROCESSED_PATH
 
 # ============================================================================
 # PART 1: DATA LOADING (Same as XResNet1D)
@@ -595,13 +595,62 @@ def compute_metrics(y_true, y_pred, y_scores):
     }
 
 
+def plot_confusion_matrices(y_true, y_pred, class_names, save_path=None):
+    """Plot confusion matrix for each class (one subplot per class)"""
+    n_classes = y_true.shape[1]
+    fig, axes = plt.subplots(1, n_classes, figsize=(4*n_classes, 4))
+    
+    if n_classes == 1:
+        axes = [axes]
+    
+    for i, (ax, class_name) in enumerate(zip(axes, class_names)):
+        cm = confusion_matrix(y_true[:, i], y_pred[:, i])
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+        ax.set_title(f'{class_name}')
+        ax.set_ylabel('True')
+        ax.set_xlabel('Predicted')
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=None, 
+                                     title="Confusion Matrix - All Classes"):
+    """
+    Plot single confusion matrix showing all classes together.
+    For multi-label classification, convert to multi-class by taking highest probability.
+    """
+    # Convert multi-label to multi-class by taking the class with highest probability
+    y_true_single = np.argmax(y_true, axis=1)
+    y_pred_single = np.argmax(y_pred, axis=1)
+    
+    cm = confusion_matrix(y_true_single, y_pred_single, labels=range(len(class_names)))
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=class_names, 
+                yticklabels=class_names,
+                cbar_kws={'shrink': 0.8})
+    plt.xlabel("Predicted", fontsize=12)
+    plt.ylabel("True", fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
+
 # ============================================================================
 # PART 7: MAIN TRAINING PIPELINE
 # ============================================================================
 
 def main():
     # Configuration
-    DATA_PATH = DATA_PATH  # UPDATE THIS
+    DATA_PATH = DATA_PATH
     PROCESSED_PATH = PROCESSED_PATH
     SAMPLING_RATE = 100
     IMAGE_SIZE = 224
@@ -733,13 +782,32 @@ def main():
         results[config['name']] = {
             'auc': test_metrics['macro_auc'],
             'f1': test_metrics['f1_macro'],
-            'f_beta': test_metrics['f_beta_macro']
+            'f_beta': test_metrics['f_beta_macro'],
+            'y_true': test_labels,
+            'y_pred': test_pred_binary,
+            'y_scores': test_preds
         }
         
         print(f"\nTest Results - {config['name']}:")
         print(f"  AUC: {test_metrics['macro_auc']:.4f}")
         print(f"  F1: {test_metrics['f1_macro']:.4f}")
         print(f"  F-beta: {test_metrics['f_beta_macro']:.4f}")
+        
+        # Plot confusion matrices
+        print(f"\nGenerating confusion matrices for {config['name']}...")
+        
+        # Per-class confusion matrices
+        plot_confusion_matrices(
+            test_labels, test_pred_binary, mlb.classes_,
+            save_path=f"cm_per_class_{config['name']}.png"
+        )
+        
+        # Single combined confusion matrix
+        plot_confusion_matrix_all_classes(
+            test_labels, test_pred_binary, mlb.classes_,
+            save_path=f"cm_combined_{config['name']}.png",
+            title=f"Confusion Matrix - {config['name']}"
+        )
     
     # Final comparison
     print("\n" + "="*80)
@@ -748,15 +816,71 @@ def main():
     print(f"{'Model':<30} | {'AUC':<8} | {'F1':<8} | {'F-beta':<8}")
     print("-" * 80)
     
+    # Prepare simplified results for JSON (without numpy arrays)
+    results_summary = {}
+    
     for name, metrics in results.items():
         print(f"{name:<30} | {metrics['auc']:.4f}   | {metrics['f1']:.4f}   | {metrics['f_beta']:.4f}")
+        
+        # Store only numeric results for JSON
+        results_summary[name] = {
+            'auc': float(metrics['auc']),
+            'f1': float(metrics['f1']),
+            'f_beta': float(metrics['f_beta'])
+        }
     
-    # Save results
+    # Save numeric results
     import json
     with open('standardized_cwt_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results_summary, f, indent=2)
     
-    print("\n✓ Pipeline complete! Results saved to standardized_cwt_results.json")
+    # Create comparative visualization
+    print("\n" + "="*80)
+    print("GENERATING COMPARATIVE VISUALIZATIONS")
+    print("="*80)
+    
+    # Plot metric comparison
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    model_names = list(results_summary.keys())
+    
+    # AUC comparison
+    aucs = [results_summary[name]['auc'] for name in model_names]
+    axes[0].bar(range(len(model_names)), aucs, color='steelblue')
+    axes[0].set_xticks(range(len(model_names)))
+    axes[0].set_xticklabels(model_names, rotation=45, ha='right')
+    axes[0].set_ylabel('AUC')
+    axes[0].set_title('Macro AUC Comparison')
+    axes[0].set_ylim([0.7, 1.0])
+    axes[0].grid(axis='y', alpha=0.3)
+    
+    # F1 comparison
+    f1s = [results_summary[name]['f1'] for name in model_names]
+    axes[1].bar(range(len(model_names)), f1s, color='coral')
+    axes[1].set_xticks(range(len(model_names)))
+    axes[1].set_xticklabels(model_names, rotation=45, ha='right')
+    axes[1].set_ylabel('F1 Score')
+    axes[1].set_title('Macro F1 Comparison')
+    axes[1].set_ylim([0.7, 1.0])
+    axes[1].grid(axis='y', alpha=0.3)
+    
+    # F-beta comparison
+    f_betas = [results_summary[name]['f_beta'] for name in model_names]
+    axes[2].bar(range(len(model_names)), f_betas, color='mediumseagreen')
+    axes[2].set_xticks(range(len(model_names)))
+    axes[2].set_xticklabels(model_names, rotation=45, ha='right')
+    axes[2].set_ylabel('F-beta Score')
+    axes[2].set_title('Macro F-beta Comparison')
+    axes[2].set_ylim([0.7, 1.0])
+    axes[2].grid(axis='y', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('metrics_comparison.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("\n✓ Pipeline complete!")
+    print("✓ Results saved to standardized_cwt_results.json")
+    print("✓ Confusion matrices saved as PNG files")
+    print("✓ Metrics comparison saved as metrics_comparison.png")
 
 
 if __name__ == '__main__':
