@@ -15,7 +15,6 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import fbeta_score, roc_auc_score, f1_score, roc_curve
 from tqdm import tqdm
-import json
 
 # ============================================================================
 # CONFIGURATION
@@ -61,146 +60,39 @@ def apply_thresholds(y_scores, thresholds):
 # ============================================================================
 # DATASET CLASS (Memory-Efficient)
 # ============================================================================
-
-# class CWTDataset(Dataset):
-#     """
-#     Memory-efficient dataset that loads CWT data on-the-fly
-#     Uses memory mapping to avoid loading entire dataset into RAM
-#     """
-    
-#     def __init__(self, scalo_path, phaso_path, labels, mode='scalogram'):
-#         """
-#         Args:
-#             scalo_path: Path to scalogram .npy file
-#             phaso_path: Path to phasogram .npy file
-#             labels: (N, num_classes) numpy array
-#             mode: 'scalogram', 'phasogram', 'both', or 'fusion'
-#         """
-#         self.scalograms = np.load(scalo_path, mmap_mode='r')
-#         self.phasograms = np.load(phaso_path, mmap_mode='r')
-#         self.labels = torch.FloatTensor(labels)
-#         self.mode = mode
-        
-#         print(f"  Dataset loaded: {len(self.labels)} samples, mode={mode}")
-    
-#     def __len__(self):
-#         return len(self.labels)
-    
-#     def __getitem__(self, idx):
-#         # Load data on-the-fly from memory-mapped files
-#         scalo = torch.FloatTensor(self.scalograms[idx])
-#         phaso = torch.FloatTensor(self.phasograms[idx])
-#         label = self.labels[idx]
-        
-#         if self.mode == 'scalogram':
-#             return scalo, label
-#         elif self.mode == 'phasogram':
-#             return phaso, label
-#         elif self.mode == 'both':
-#             return (scalo, phaso), label
-#         elif self.mode == 'fusion':
-#             # Concatenate along channel dimension: (12, H, W) + (12, H, W) = (24, H, W)
-#             fused = torch.cat([scalo, phaso], dim=0)
-#             return fused, label
-#         else:
-#             raise ValueError(f"Unknown mode: {self.mode}")
-
-
-def _ensure_numeric_memmap(npy_path, memmap_basename, processed_dir):
-    """
-    Try to open npy_path as numeric mmap. If it is an object/pickled array,
-    convert it ONCE into a numeric memmap .dat file and a small .json metadata file.
-    Returns: np.memmap view (read-only).
-    """
-    # Fast path: numeric npy that can be memmapped
-    try:
-        arr = np.load(npy_path, mmap_mode='r')   # allow_pickle=False by default
-        if arr.dtype == object:
-            raise ValueError("object array cannot be memmapped")
-        return arr  # this is already a memmap view
-    except Exception:
-        pass  # fall through to conversion
-
-    # Slow path: load pickled/object array and convert once
-    print(f"[convert] Converting pickled/object npy to memmap: {npy_path}")
-    obj = np.load(npy_path, allow_pickle=True)
-
-    # If it's an object array of per-sample arrays, stack to (N, C, H, W)
-    if isinstance(obj, np.ndarray) and obj.dtype == object:
-        # Try to stack into a dense numeric array
-        first = obj[0]
-        # Heuristic: ensure consistent shapes
-        shapes = [x.shape for x in obj]
-        if len(set(shapes)) != 1:
-            raise ValueError(f"Inconsistent sample shapes in {npy_path}: {set(shapes)}")
-        dense = np.stack(obj, axis=0).astype('float32', copy=False)
-    else:
-        dense = obj.astype('float32', copy=False)
-
-    # Write as memmap
-    os.makedirs(processed_dir, exist_ok=True)
-    dat_path = os.path.join(processed_dir, memmap_basename + '.dat')
-    meta_path = os.path.join(processed_dir, memmap_basename + '.json')
-
-    mm = np.memmap(dat_path, mode='w+', dtype=dense.dtype, shape=dense.shape)
-    mm[:] = dense[:]
-    mm.flush()
-
-    with open(meta_path, 'w') as f:
-        json.dump({'shape': list(dense.shape), 'dtype': str(dense.dtype)}, f)
-
-    # Reopen read-only
-    mm = np.memmap(dat_path, mode='r', dtype=dense.dtype, shape=dense.shape)
-    print(f"[convert] Wrote memmap: {dat_path} with shape {dense.shape}, dtype {dense.dtype}")
-    return mm
-
-
 class CWTDataset(Dataset):
     """
-    Memory-efficient dataset that loads CWT data on-the-fly.
-    Accepts either numeric .npy files (mmap-able) or older pickled/object .npy files,
-    which it will convert once to a numeric memmap (.dat) in PROCESSED_PATH.
+    Memory-efficient dataset that loads CWT data on-the-fly
+    Uses memory mapping to avoid loading entire dataset into RAM
     """
+    
     def __init__(self, scalo_path, phaso_path, labels, mode='scalogram'):
         """
         Args:
-            scalo_path: Path to scalogram .npy (or already-converted memmap .dat via helper)
-            phaso_path: Path to phasogram .npy (or memmap .dat)
+            scalo_path: Path to scalogram .npy file
+            phaso_path: Path to phasogram .npy file
             labels: (N, num_classes) numpy array
             mode: 'scalogram', 'phasogram', 'both', or 'fusion'
         """
+        # Load with allow_pickle=True to handle different save formats
+        self.scalograms = np.load(scalo_path, mmap_mode='r', allow_pickle=True)
+        self.phasograms = np.load(phaso_path, mmap_mode='r', allow_pickle=True)
+        self.labels = torch.FloatTensor(labels)
         self.mode = mode
-        self.labels = torch.as_tensor(labels, dtype=torch.float32)
-
-        # Use the dir containing the npy files for memmap outputs
-        processed_dir = os.path.dirname(scalo_path)
-
-        # Make memmaps if needed (or return mmap view if already numeric)
-        self.scalograms = _ensure_numeric_memmap(
-            scalo_path,
-            memmap_basename=os.path.splitext(os.path.basename(scalo_path))[0] + "_memmap",
-            processed_dir=processed_dir
-        )
-        self.phasograms = _ensure_numeric_memmap(
-            phaso_path,
-            memmap_basename=os.path.splitext(os.path.basename(phaso_path))[0] + "_memmap",
-            processed_dir=processed_dir
-        )
-
-        # Basic sanity
-        assert len(self.scalograms) == len(self.labels), "scalograms/labels length mismatch"
-        assert len(self.phasograms) == len(self.labels), "phasograms/labels length mismatch"
-
+        
         print(f"  Dataset loaded: {len(self.labels)} samples, mode={mode}")
-
+        print(f"  Scalograms shape: {self.scalograms.shape}")
+        print(f"  Phasograms shape: {self.phasograms.shape}")
+    
     def __len__(self):
         return len(self.labels)
-
+    
     def __getitem__(self, idx):
-        scalo = torch.from_numpy(np.array(self.scalograms[idx], dtype=np.float32))
-        phaso = torch.from_numpy(np.array(self.phasograms[idx], dtype=np.float32))
+        # Load data on-the-fly from memory-mapped files
+        scalo = torch.FloatTensor(self.scalograms[idx])
+        phaso = torch.FloatTensor(self.phasograms[idx])
         label = self.labels[idx]
-
+        
         if self.mode == 'scalogram':
             return scalo, label
         elif self.mode == 'phasogram':
@@ -208,12 +100,11 @@ class CWTDataset(Dataset):
         elif self.mode == 'both':
             return (scalo, phaso), label
         elif self.mode == 'fusion':
-            # Concatenate along channel dimension: (12,H,W) + (12,H,W) => (24,H,W)
+            # Concatenate along channel dimension: (12, H, W) + (12, H, W) = (24, H, W)
             fused = torch.cat([scalo, phaso], dim=0)
             return fused, label
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
-
 
 
 # ============================================================================
