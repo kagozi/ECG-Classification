@@ -280,7 +280,7 @@ if __name__ == '__main__':
         print(f"\nTop {top_k} models selected:")
         for i, (name, res) in enumerate(top_models, 1):
             print(f"  {i}. {name:<25} F1: {res['test_metrics']['f1_macro']:.4f}")
-        
+        # Ensembe 2 models only 
         # Ensemble top-k predictions
         top_scores = [res['predictions']['y_scores'] for name, res in top_models]
         ensemble_top_scores = np.mean(top_scores, axis=0)
@@ -491,7 +491,8 @@ if __name__ == '__main__':
             ensemble_pred_df[f'score_weighted_{class_name}'] = ensemble_weighted_scores[:, i]
         
         ensemble_output_path = 'predictions_ensemble.csv'
-        ensemble_pred_df.to_csv(ensemble_output_path, index=False)
+       
+        ensemble_pred_df.to_csv(os.path.join(RESULTS_PATH, ensemble_output_path), index=False)
         print(f"Ensemble predictions saved to: {ensemble_output_path}")
 
         
