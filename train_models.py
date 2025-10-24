@@ -755,7 +755,10 @@ def train_model(config, metadata, device):
                         'SwinTransformerLateFusion', 'SwinTransformerEarlyFusion']
     
     if config['model'] in pretrained_models:
-        lr = 1e-4  # Lower LR for finetuning
+        if 'Swin' in config['model']:
+            lr = 3e-5
+        else:
+            lr = 1e-4
         print(f"Using LR={lr} (finetuning)")
     else:
         lr = LR
