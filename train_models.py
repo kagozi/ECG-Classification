@@ -24,7 +24,7 @@ import seaborn as sns
 
 PROCESSED_PATH = '../santosh_lab/shared/KagoziA/wavelets/xresnet_baseline/'
 BATCH_SIZE = 32
-EPOCHS = 50
+EPOCHS = 100
 LR = 0.001
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 NUM_WORKERS = 4
@@ -893,7 +893,7 @@ def main():
         {'mode': 'scalogram', 'model': 'EfficientNetECG', 'name': 'Scalogram-EfficientNet-Focal', 'loss': 'focal'},
         {'mode': 'scalogram', 'model': 'ViTECG', 'name': 'ViT-Scalogram-Select-Focal', 'loss': 'focal'},
         {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-BCE', 'loss': 'bce'},
-        {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-Focal', 'loss': 'focal'},
+        # {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-Focal', 'loss': 'focal'},
         
 
     ]
