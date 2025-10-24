@@ -2,7 +2,6 @@
 # STEP 3: Train CNN Models on CWT Representations
 # ============================================================================
 # Tests multiple model architectures with Focal Loss support
-
 import os
 import json
 import pickle
@@ -18,13 +17,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 PROCESSED_PATH = '../santosh_lab/shared/KagoziA/wavelets/xresnet_baseline/'
 BATCH_SIZE = 32
-EPOCHS = 100
+EPOCHS = 15
 LR = 0.001
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 NUM_WORKERS = 4
@@ -58,32 +58,6 @@ def apply_thresholds(y_scores, thresholds):
             y_pred[i, np.argmax(y_scores[i])] = 1
     
     return y_pred
-
-def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=None, title="Confusion Matrix - All Classes"):
-    """
-    Plots a single confusion matrix showing all 5 classes together.
-    For multi-label classification, we convert to multi-class by taking the class with highest probability.
-    """
-    # Convert multi-label to multi-class by taking the class with highest probability
-    y_true_single = np.argmax(y_true, axis=1)
-    y_pred_single = np.argmax(y_pred, axis=1)
-    
-    cm = confusion_matrix(y_true_single, y_pred_single, labels=range(len(class_names)))
-    
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
-                xticklabels=class_names, 
-                yticklabels=class_names,
-                cbar_kws={'shrink': 0.8})
-    plt.xlabel("Predicted", fontsize=12)
-    plt.ylabel("True", fontsize=12)
-    plt.title(title, fontsize=14)
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
 
 
 # ============================================================================
@@ -139,72 +113,35 @@ class CWTDataset(Dataset):
     def __len__(self):
         return len(self.labels)
     
-    # def _augment_image(self, img):
-    #     """Apply random augmentations to CWT image"""
-    #     # img: (C, H, W) tensor
-        
-    #     # Random horizontal flip (50% chance)
-    #     if torch.rand(1).item() > 0.5:
-    #         img = torch.flip(img, dims=[2])
-        
-    #     # Random vertical flip (30% chance) - less aggressive
-    #     if torch.rand(1).item() > 0.7:
-    #         img = torch.flip(img, dims=[1])
-        
-    #     # Random brightness adjustment (±10%)
-    #     if torch.rand(1).item() > 0.5:
-    #         brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.2
-    #         img = torch.clamp(img * brightness_factor, 0, 1)
-        
-    #     # Random contrast adjustment
-    #     if torch.rand(1).item() > 0.5:
-    #         mean = img.mean()
-    #         contrast_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.2
-    #         img = torch.clamp((img - mean) * contrast_factor + mean, 0, 1)
-        
-    #     # Add small Gaussian noise (5% chance)
-    #     if torch.rand(1).item() > 0.95:
-    #         noise = torch.randn_like(img) * 0.01
-    #         img = torch.clamp(img + noise, 0, 1)
-        
-    #     return img
     def _augment_image(self, img):
-        # img: (C, H, W) in [0,1]
-        C, H, W = img.shape
-
-        # Small time shift (roll along W)
-        if torch.rand(1).item() < 0.5:
-            max_shift = int(0.05 * W)
-            shift = torch.randint(-max_shift, max_shift + 1, (1,)).item()
-            img = torch.roll(img, shifts=shift, dims=2)
-
-        # Time masking (SpecAugment)
-        if torch.rand(1).item() < 0.5:
-            t = int(0.05 * W)
-            t0 = torch.randint(0, max(1, W - t), (1,)).item()
-            img[:, :, t0:t0 + t] = 0.0
-
-        # Frequency masking (SpecAugment)
-        if torch.rand(1).item() < 0.5:
-            f = int(0.05 * H)
-            f0 = torch.randint(0, max(1, H - f), (1,)).item()
-            img[:, f0:f0 + f, :] = 0.0
-
-        # Mild brightness/contrast
-        if torch.rand(1).item() < 0.5:
-            b = 1.0 + (torch.rand(1).item() - 0.5) * 0.1  # ±10%
-            img = torch.clamp(img * b, 0, 1)
-        if torch.rand(1).item() < 0.5:
+        """Apply random augmentations to CWT image"""
+        # img: (C, H, W) tensor
+        
+        # Random horizontal flip (50% chance)
+        if torch.rand(1).item() > 0.5:
+            img = torch.flip(img, dims=[2])
+        
+        # Random vertical flip (30% chance) - less aggressive
+        if torch.rand(1).item() > 0.7:
+            img = torch.flip(img, dims=[1])
+        
+        # Random brightness adjustment (±10%)
+        if torch.rand(1).item() > 0.5:
+            brightness_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.2
+            img = torch.clamp(img * brightness_factor, 0, 1)
+        
+        # Random contrast adjustment
+        if torch.rand(1).item() > 0.5:
             mean = img.mean()
-            c = 1.0 + (torch.rand(1).item() - 0.5) * 0.2  # ±20%
-            img = torch.clamp((img - mean) * c + mean, 0, 1)
-
-        # Tiny noise
-        if torch.rand(1).item() < 0.1:
-            img = torch.clamp(img + 0.01 * torch.randn_like(img), 0, 1)
-
+            contrast_factor = 1.0 + (torch.rand(1).item() - 0.5) * 0.2
+            img = torch.clamp((img - mean) * contrast_factor + mean, 0, 1)
+        
+        # Add small Gaussian noise (5% chance)
+        if torch.rand(1).item() > 0.95:
+            noise = torch.randn_like(img) * 0.01
+            img = torch.clamp(img + noise, 0, 1)
+        
         return img
-
     
     def __getitem__(self, idx):
         scalo = torch.FloatTensor(np.array(self.scalograms[idx], copy=True))
@@ -227,6 +164,30 @@ class CWTDataset(Dataset):
             return fused, label
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
+
+
+# ============================================================================
+# SE BLOCK FOR HYBRID MODELS
+# ============================================================================
+
+class SEBlock(nn.Module):
+    """Squeeze-and-Excitation block for channel attention"""
+    
+    def __init__(self, channels, reduction=16):
+        super().__init__()
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.squeeze(x).view(b, c)
+        y = self.excitation(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
 
 
 # ============================================================================
@@ -297,13 +258,30 @@ class ViTECG(nn.Module):
 
 
 class SwinTransformerECG(nn.Module):
-    """Swin Transformer for ECG classification"""
+    """Swin Transformer for ECG classification with hybrid CNN stem"""
     
     def __init__(self, num_classes=5, dropout=0.3, pretrained=True, 
-                 model_name='swin_large_patch4_window7_224', adapter_strategy='learned'):
+                 model_name='swin_base_patch4_window7_224', adapter_strategy='learned',
+                 use_hybrid=True):
         super().__init__()
         
+        self.use_hybrid = use_hybrid
         self.adapter = ChannelAdapter(strategy=adapter_strategy)
+        
+        if use_hybrid:
+            # Hybrid CNN stem: enhances local feature extraction before Swin
+            self.conv_stem = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                SEBlock(128),
+                nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(3),
+                nn.ReLU(inplace=True)
+            )
         
         self.backbone = timm.create_model(
             model_name,
@@ -324,23 +302,44 @@ class SwinTransformerECG(nn.Module):
         )
         
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"  SwinTransformerECG: {n_params/1e6:.1f}M parameters (adapter={adapter_strategy})")
+        hybrid_str = "Hybrid-" if use_hybrid else ""
+        print(f"  {hybrid_str}SwinTransformerECG: {n_params/1e6:.1f}M parameters (adapter={adapter_strategy})")
     
     def forward(self, x):
-        x = self.adapter(x)
+        x = self.adapter(x)  # 12 channels → 3 channels
+        
+        if self.use_hybrid:
+            x = self.conv_stem(x)  # CNN feature extraction (maintains 224x224)
+        
         features = self.backbone(x)
         output = self.classifier(features)
         return output
 
 
 class SwinTransformerEarlyFusion(nn.Module):
-    """Swin Transformer with early fusion for scalogram + phasogram"""
+    """Swin Transformer with early fusion for scalogram + phasogram with hybrid CNN stem"""
     
     def __init__(self, num_classes=5, dropout=0.3, pretrained=True,
-                 model_name='swin_large_patch4_window7_224'):
+                 model_name='swin_base_patch4_window7_224', use_hybrid=True):
         super().__init__()
         
+        self.use_hybrid = use_hybrid
         self.adapter = nn.Conv2d(24, 3, kernel_size=1, bias=False)
+        
+        if use_hybrid:
+            # Hybrid CNN stem for fusion
+            self.conv_stem = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                SEBlock(128),
+                nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(3),
+                nn.ReLU(inplace=True)
+            )
         
         self.backbone = timm.create_model(
             model_name,
@@ -361,24 +360,59 @@ class SwinTransformerEarlyFusion(nn.Module):
         )
         
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"  SwinTransformerEarlyFusion: {n_params/1e6:.1f}M parameters")
+        hybrid_str = "Hybrid-" if use_hybrid else ""
+        print(f"  {hybrid_str}SwinTransformerEarlyFusion: {n_params/1e6:.1f}M parameters")
     
     def forward(self, x):
-        x = self.adapter(x)
+        x = self.adapter(x)  # 24 channels → 3 channels
+        
+        if self.use_hybrid:
+            x = self.conv_stem(x)  # CNN feature extraction
+        
         features = self.backbone(x)
         output = self.classifier(features)
         return output
 
 
 class SwinTransformerLateFusion(nn.Module):
-    """Swin Transformer with late fusion (dual stream)"""
+    """Swin Transformer with late fusion (dual stream) with hybrid CNN stems"""
     
     def __init__(self, num_classes=5, dropout=0.3, pretrained=True,
-                 model_name='swin_large_patch4_window7_224', adapter_strategy='learned'):
+                 model_name='swin_base_patch4_window7_224', adapter_strategy='learned',
+                 use_hybrid=True):
         super().__init__()
         
+        self.use_hybrid = use_hybrid
         self.adapter_scalo = ChannelAdapter(strategy=adapter_strategy)
         self.adapter_phaso = ChannelAdapter(strategy=adapter_strategy)
+        
+        if use_hybrid:
+            # Separate hybrid CNN stems for scalogram and phasogram
+            self.conv_stem_scalo = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                SEBlock(128),
+                nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(3),
+                nn.ReLU(inplace=True)
+            )
+            
+            self.conv_stem_phaso = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                SEBlock(128),
+                nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(3),
+                nn.ReLU(inplace=True)
+            )
         
         self.backbone_scalogram = timm.create_model(
             model_name,
@@ -413,11 +447,16 @@ class SwinTransformerLateFusion(nn.Module):
         )
         
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"  SwinTransformerLateFusion: {n_params/1e6:.1f}M parameters (adapter={adapter_strategy})")
+        hybrid_str = "Hybrid-" if use_hybrid else ""
+        print(f"  {hybrid_str}SwinTransformerLateFusion: {n_params/1e6:.1f}M parameters (adapter={adapter_strategy})")
     
     def forward(self, scalogram, phasogram):
-        scalo_3ch = self.adapter_scalo(scalogram)
-        phaso_3ch = self.adapter_phaso(phasogram)
+        scalo_3ch = self.adapter_scalo(scalogram)  # 12 → 3
+        phaso_3ch = self.adapter_phaso(phasogram)  # 12 → 3
+        
+        if self.use_hybrid:
+            scalo_3ch = self.conv_stem_scalo(scalo_3ch)  # CNN features
+            phaso_3ch = self.conv_stem_phaso(phaso_3ch)  # CNN features
         
         features_scalo = self.backbone_scalogram(scalo_3ch)
         features_phaso = self.backbone_phasogram(phaso_3ch)
@@ -590,6 +629,32 @@ class DualStreamCNN(nn.Module):
 # TRAINING FUNCTIONS
 # ============================================================================
 
+def plot_confusion_matrix_all_classes(y_true, y_pred, class_names, save_path=None, title="Confusion Matrix - All Classes"):
+    """
+    Plots a single confusion matrix showing all 5 classes together.
+    For multi-label classification, we convert to multi-class by taking the class with highest probability.
+    """
+    # Convert multi-label to multi-class by taking the class with highest probability
+    y_true_single = np.argmax(y_true, axis=1)
+    y_pred_single = np.argmax(y_pred, axis=1)
+    
+    cm = confusion_matrix(y_true_single, y_pred_single, labels=range(len(class_names)))
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=class_names, 
+                yticklabels=class_names,
+                cbar_kws={'shrink': 0.8})
+    plt.xlabel("Predicted", fontsize=12)
+    plt.ylabel("True", fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.show()
+
 def train_epoch(model, dataloader, criterion, optimizer, device, is_dual=False):
     """Train for one epoch"""
     model.train()
@@ -689,17 +754,17 @@ def train_model(config, metadata, device):
     train_dataset = CWTDataset(
         os.path.join(PROCESSED_PATH, 'train_scalograms.npy'),
         os.path.join(PROCESSED_PATH, 'train_phasograms.npy'),
-        y_train, mode=mode,  augment=True
+        y_train, mode=mode, augment=False  # Enable augmentation for training
     )
     val_dataset = CWTDataset(
         os.path.join(PROCESSED_PATH, 'val_scalograms.npy'),
         os.path.join(PROCESSED_PATH, 'val_phasograms.npy'),
-        y_val, mode=mode
+        y_val, mode=mode, augment=False  # No augmentation for validation
     )
     test_dataset = CWTDataset(
         os.path.join(PROCESSED_PATH, 'test_scalograms.npy'),
         os.path.join(PROCESSED_PATH, 'test_phasograms.npy'),
-        y_test, mode=mode
+        y_test, mode=mode, augment=False  # No augmentation for testing
     )
     
     # Create dataloaders
@@ -716,9 +781,10 @@ def train_model(config, metadata, device):
         num_workers=NUM_WORKERS, pin_memory=True
     )
     
-    # Create model
+    # Create model with adapter strategy support
     print(f"\nCreating model...")
     num_classes = metadata['num_classes']
+    adapter_strategy = config.get('adapter', 'learned')  # Get adapter strategy from config
     
     if config['model'] == 'DualStreamCNN':
         model = DualStreamCNN(num_classes=num_classes, num_channels=12)
@@ -726,15 +792,15 @@ def train_model(config, metadata, device):
         num_ch = 24 if mode == 'fusion' else 12
         model = CWT2DCNN(num_classes=num_classes, num_channels=num_ch)
     elif config['model'] == 'ViTECG':
-        model = ViTECG(num_classes=num_classes, pretrained=True)
+        model = ViTECG(num_classes=num_classes, pretrained=True, adapter_strategy=adapter_strategy)
     elif config['model'] == 'SwinTransformerECG':
-        model = SwinTransformerECG(num_classes=num_classes, pretrained=True)
+        model = SwinTransformerECG(num_classes=num_classes, pretrained=True, adapter_strategy=adapter_strategy)
     elif config['model'] == 'SwinTransformerEarlyFusion':
         model = SwinTransformerEarlyFusion(num_classes=num_classes, pretrained=True)
     elif config['model'] == 'SwinTransformerLateFusion':
-        model = SwinTransformerLateFusion(num_classes=num_classes, pretrained=True)
+        model = SwinTransformerLateFusion(num_classes=num_classes, pretrained=True, adapter_strategy=adapter_strategy)
     elif config['model'] == 'EfficientNetECG':
-        model = EfficientNetECG(num_classes=num_classes, pretrained=True)
+        model = EfficientNetECG(num_classes=num_classes, pretrained=True, adapter_strategy=adapter_strategy)
     else:
         raise ValueError(f"Unknown model: {config['model']}")
     
@@ -756,9 +822,9 @@ def train_model(config, metadata, device):
     
     if config['model'] in pretrained_models:
         if 'Swin' in config['model']:
-            lr = 3e-5
-        else:
-            lr = 1e-4
+            LR = 3e-5  # Lower LR for finetuning
+        else: 
+            lr = 1e-4 
         print(f"Using LR={lr} (finetuning)")
     else:
         lr = LR
@@ -829,8 +895,12 @@ def train_model(config, metadata, device):
     # Apply optimal thresholds
     test_pred_binary = apply_thresholds(test_preds, best_thresholds)
     test_metrics = compute_metrics(test_labels, test_pred_binary, test_preds)
-    # Generate confusion matrix
-    print(f"\nGenerating confusion matrix for {config['name']}...")
+    
+    print(f"\nTest Results - {config['name']}:")
+    print(f"  AUC:    {test_metrics['macro_auc']:.4f}")
+    print(f"  F1:     {test_metrics['f1_macro']:.4f}")
+    print(f"  F-beta: {test_metrics['f_beta_macro']:.4f}")
+    
     try:
         plot_confusion_matrix_all_classes(
             test_labels, 
@@ -842,12 +912,6 @@ def train_model(config, metadata, device):
         print(f"✓ Confusion matrix saved: confusion_matrix_{config['name']}.png")
     except Exception as e:
         print(f"❌ Error generating confusion matrix: {e}")
-    
-    
-    print(f"\nTest Results - {config['name']}:")
-    print(f"  AUC:    {test_metrics['macro_auc']:.4f}")
-    print(f"  F1:     {test_metrics['f1_macro']:.4f}")
-    print(f"  F-beta: {test_metrics['f_beta_macro']:.4f}")
     
     # Save results
     results = {
@@ -879,9 +943,6 @@ def main():
     # Define model configurations to train
     configs = [
         # Baseline CNN models with both losses
-        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
-        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-Focal', 'loss': 'focal'},
-        
         # Fusion models
         {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
         {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
@@ -889,12 +950,16 @@ def main():
         {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-BCE', 'loss': 'bce'},
         {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-Focal', 'loss': 'focal'},
         
-        # Pretrained models - compare BCE vs Focal Loss
-        {'mode': 'scalogram', 'model': 'EfficientNetECG', 'name': 'Scalogram-EfficientNet-Focal', 'loss': 'focal'},
-        {'mode': 'scalogram', 'model': 'ViTECG', 'name': 'ViT-Scalogram-Select-Focal', 'loss': 'focal'},
-        {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-BCE', 'loss': 'bce'},
-        # {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-Focal', 'loss': 'focal'},
         
+        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
+        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-Focal', 'loss': 'focal'},
+        
+        # # Pretrained models - compare BCE vs Focal Loss
+        # {'mode': 'scalogram', 'model': 'EfficientNetECG', 'name': 'Scalogram-EfficientNet-BCE', 'loss': 'bce'},
+        # {'mode': 'scalogram', 'model': 'EfficientNetECG', 'name': 'Scalogram-EfficientNet-Focal', 'loss': 'focal'},
+        
+        # {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-BCE', 'loss': 'bce'},
+        # {'mode': 'scalogram', 'model': 'SwinTransformerECG', 'name': 'Scalogram-Swin-Focal', 'loss': 'focal'},
 
     ]
     
@@ -912,41 +977,65 @@ def main():
             traceback.print_exc()
             continue
     
-    # Final comparison
+    # Final comparison with adapter strategy analysis
     print("\n" + "="*80)
     print("FINAL RESULTS COMPARISON")
     print("="*80)
-    print(f"{'Model':<40} | {'Loss':<6} | {'AUC':<8} | {'F1':<8} | {'F-beta':<8}")
-    print("-" * 90)
+    print(f"{'Model':<50} | {'Adapter':<8} | {'AUC':<8} | {'F1':<8} | {'F-beta':<8}")
+    print("-" * 100)
     
     # Group by model type
     for name, metrics in sorted(all_results.items()):
-        loss_type = 'Focal' if 'Focal' in name else 'BCE'
-        print(f"{name:<40} | {loss_type:<6} | {metrics['macro_auc']:.4f}   | "
+        adapter = 'N/A'
+        if 'Learned' in name:
+            adapter = 'Learned'
+        elif 'Select' in name:
+            adapter = 'Select'
+        elif 'PCA' in name:
+            adapter = 'PCA'
+        
+        print(f"{name:<50} | {adapter:<8} | {metrics['macro_auc']:.4f}   | "
               f"{metrics['f1_macro']:.4f}   | {metrics['f_beta_macro']:.4f}")
     
     # Save final results
     with open(os.path.join(PROCESSED_PATH, 'final_results.json'), 'w') as f:
         json.dump(all_results, f, indent=2)
     
-    # Analyze BCE vs Focal Loss
+    # Analyze adapter strategies
     print("\n" + "="*80)
-    print("BCE vs FOCAL LOSS COMPARISON")
+    print("ADAPTER STRATEGY COMPARISON")
     print("="*80)
     
-    bce_models = {k: v for k, v in all_results.items() if 'BCE' in k}
-    focal_models = {k: v for k, v in all_results.items() if 'Focal' in k}
+    learned_models = {k: v for k, v in all_results.items() if 'Learned' in k}
+    select_models = {k: v for k, v in all_results.items() if 'Select' in k}
+    pca_models = {k: v for k, v in all_results.items() if 'PCA' in k}
     
-    if bce_models and focal_models:
-        avg_auc_bce = np.mean([v['macro_auc'] for v in bce_models.values()])
-        avg_auc_focal = np.mean([v['macro_auc'] for v in focal_models.values()])
-        
-        avg_f1_bce = np.mean([v['f1_macro'] for v in bce_models.values()])
-        avg_f1_focal = np.mean([v['f1_macro'] for v in focal_models.values()])
-        
-        print(f"Average AUC  - BCE: {avg_auc_bce:.4f} | Focal: {avg_auc_focal:.4f}")
-        print(f"Average F1   - BCE: {avg_f1_bce:.4f} | Focal: {avg_f1_focal:.4f}")
-        print(f"\nImprovement: AUC {(avg_auc_focal - avg_auc_bce)*100:+.2f}%, F1 {(avg_f1_focal - avg_f1_bce)*100:+.2f}%")
+    if learned_models:
+        avg_auc_learned = np.mean([v['macro_auc'] for v in learned_models.values()])
+        avg_f1_learned = np.mean([v['f1_macro'] for v in learned_models.values()])
+        print(f"Learned Adapter - Avg AUC: {avg_auc_learned:.4f}, Avg F1: {avg_f1_learned:.4f}")
+    
+    if select_models:
+        avg_auc_select = np.mean([v['macro_auc'] for v in select_models.values()])
+        avg_f1_select = np.mean([v['f1_macro'] for v in select_models.values()])
+        print(f"Select Adapter  - Avg AUC: {avg_auc_select:.4f}, Avg F1: {avg_f1_select:.4f}")
+    
+    if pca_models:
+        avg_auc_pca = np.mean([v['macro_auc'] for v in pca_models.values()])
+        avg_f1_pca = np.mean([v['f1_macro'] for v in pca_models.values()])
+        print(f"PCA Adapter     - Avg AUC: {avg_auc_pca:.4f}, Avg F1: {avg_f1_pca:.4f}")
+    
+    # Find best model overall
+    print("\n" + "="*80)
+    print("BEST MODEL")
+    print("="*80)
+    
+    if all_results:
+        best_model = max(all_results.items(), key=lambda x: x[1]['macro_auc'])
+        print(f"Model: {best_model[0]}")
+        print(f"  AUC:    {best_model[1]['macro_auc']:.4f}")
+        print(f"  F1:     {best_model[1]['f1_macro']:.4f}")
+        print(f"  F-beta: {best_model[1]['f_beta_macro']:.4f}")
     
     print("\n" + "="*80)
     print("STEP 3 COMPLETE!")
