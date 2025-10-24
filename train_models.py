@@ -822,7 +822,7 @@ def train_model(config, metadata, device):
     
     if config['model'] in pretrained_models:
         if 'Swin' in config['model']:
-            LR = 3e-5  # Lower LR for finetuning
+            lr = 3e-5  # Lower LR for finetuning
         else: 
             lr = 1e-4 
         print(f"Using LR={lr} (finetuning)")
