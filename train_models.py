@@ -963,6 +963,7 @@ def main():
     # Define model configurations to train
     configs = [    
         # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
+        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
         {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
         {'mode': 'fusion', 'model': 'DualStreamCNN', 'name': 'DualStreamCNN-BCE', 'loss': 'bce'},
                 # {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-BCE', 'loss': 'bce'},
@@ -971,7 +972,7 @@ def main():
         # Baseline CNN models with both losses
         # Fusion models
         {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
-        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
+        # {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
         
 
     
