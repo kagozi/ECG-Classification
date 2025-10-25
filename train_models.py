@@ -217,6 +217,13 @@ class ChannelAdapter(nn.Module):
         elif self.strategy == 'select':
             return x[:, self.selected_leads, :, :]
 
+class Normalize(nn.Module):
+    def __init__(self, mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)):
+        super().__init__()
+        self.register_buffer('mean', torch.tensor(mean).view(1,3,1,1))
+        self.register_buffer('std',  torch.tensor(std).view(1,3,1,1))
+    def forward(self, x):  # x: (B,3,H,W)
+        return (x - self.mean) / self.std
 
 # ============================================================================
 # PRETRAINED MODELS
@@ -229,7 +236,7 @@ class ViTECG(nn.Module):
         super().__init__()
         
         self.adapter = ChannelAdapter(strategy=adapter_strategy)
-        
+        self.norm = Normalize()
         from torchvision.models import vit_b_16, ViT_B_16_Weights
         
         if pretrained:
@@ -254,6 +261,7 @@ class ViTECG(nn.Module):
     
     def forward(self, x):
         x = self.adapter(x)
+        # x = self.norm(x)
         return self.backbone(x)
 
 
@@ -307,6 +315,7 @@ class SwinTransformerECG(nn.Module):
     
     def forward(self, x):
         x = self.adapter(x)  # 12 channels → 3 channels
+        # x = self.norm(x)
         
         if self.use_hybrid:
             x = self.conv_stem(x)  # CNN feature extraction (maintains 224x224)
@@ -365,7 +374,7 @@ class SwinTransformerEarlyFusion(nn.Module):
     
     def forward(self, x):
         x = self.adapter(x)  # 24 channels → 3 channels
-        
+        # x = self.norm(x)
         if self.use_hybrid:
             x = self.conv_stem(x)  # CNN feature extraction
         
@@ -941,18 +950,19 @@ def main():
     print(f"  Test:  {metadata['test_size']} samples")
     
     # Define model configurations to train
-    configs = [
+    configs = [    
+        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
+        {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-Focal', 'loss': 'focal'},
+        {'mode': 'fusion', 'model': 'DualStreamCNN', 'name': 'DualStreamCNN-BCE', 'loss': 'focal'},
         # Baseline CNN models with both losses
         # Fusion models
-        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
-        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
+        # {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
+        # {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
         
         {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-BCE', 'loss': 'bce'},
         {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-Focal', 'loss': 'focal'},
         
-        
-        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
-        # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-Focal', 'loss': 'focal'},
+    
         
         # # Pretrained models - compare BCE vs Focal Loss
         # {'mode': 'scalogram', 'model': 'EfficientNetECG', 'name': 'Scalogram-EfficientNet-BCE', 'loss': 'bce'},
