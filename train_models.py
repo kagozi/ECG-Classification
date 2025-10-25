@@ -275,6 +275,7 @@ class SwinTransformerECG(nn.Module):
         
         self.use_hybrid = use_hybrid
         self.adapter = ChannelAdapter(strategy=adapter_strategy)
+        self.norm = Normalize()
         
         if use_hybrid:
             # Hybrid CNN stem: enhances local feature extraction before Swin
@@ -315,11 +316,11 @@ class SwinTransformerECG(nn.Module):
     
     def forward(self, x):
         x = self.adapter(x)  # 12 channels → 3 channels
-        # x = self.norm(x)
+
         
         if self.use_hybrid:
             x = self.conv_stem(x)  # CNN feature extraction (maintains 224x224)
-        
+ 
         features = self.backbone(x)
         output = self.classifier(features)
         return output
@@ -329,7 +330,7 @@ class SwinTransformerEarlyFusion(nn.Module):
     """Swin Transformer with early fusion for scalogram + phasogram with hybrid CNN stem"""
     
     def __init__(self, num_classes=5, dropout=0.3, pretrained=True,
-                 model_name='swin_base_patch4_window7_224', use_hybrid=True):
+                 model_name='swin_base_patch4_window7_224', use_hybrid=False):
         super().__init__()
         
         self.use_hybrid = use_hybrid
@@ -737,6 +738,14 @@ def compute_metrics(y_true, y_pred, y_scores):
         'f1_macro': f1_macro,
         'f_beta_macro': f_beta
     }
+    
+def compute_pos_weight(y_train):
+    # y_train: (N,C) binary numpy array
+    pos = y_train.sum(axis=0)
+    neg = y_train.shape[0] - pos
+    w = (neg / np.clip(pos, 1, None))
+    return torch.tensor(w, dtype=torch.float32)
+
 
 
 # ============================================================================
@@ -822,7 +831,9 @@ def train_model(config, metadata, device):
         criterion = FocalLoss(alpha=0.25, gamma=2.0)
         print(f"Using Focal Loss (alpha=0.25, gamma=2.0)")
     else:
-        criterion = nn.BCEWithLogitsLoss()
+        # criterion = nn.BCEWithLogitsLoss()
+        pw = compute_pos_weight(y_train).to(device)
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
         print(f"Using BCE Loss")
     
     # Optimizer with different LR for pretrained models
@@ -952,16 +963,17 @@ def main():
     # Define model configurations to train
     configs = [    
         # {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
-        {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-Focal', 'loss': 'focal'},
-        {'mode': 'fusion', 'model': 'DualStreamCNN', 'name': 'DualStreamCNN-BCE', 'loss': 'focal'},
-        # Baseline CNN models with both losses
-        # Fusion models
-        # {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
-        # {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
-        
-        {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-BCE', 'loss': 'bce'},
+        {'mode': 'scalogram', 'model': 'CWT2DCNN', 'name': 'Scalogram-2DCNN-BCE', 'loss': 'bce'},
+        {'mode': 'fusion', 'model': 'DualStreamCNN', 'name': 'DualStreamCNN-BCE', 'loss': 'bce'},
+                # {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-BCE', 'loss': 'bce'},
         {'mode': 'both', 'model': 'SwinTransformerLateFusion', 'name': 'LateFusion-Swin-Focal', 'loss': 'focal'},
         
+        # Baseline CNN models with both losses
+        # Fusion models
+        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-BCE', 'loss': 'bce'},
+        {'mode': 'fusion', 'model': 'SwinTransformerEarlyFusion', 'name': 'EarlyFusion-Swin-Focal', 'loss': 'focal'},
+        
+
     
         
         # # Pretrained models - compare BCE vs Focal Loss
